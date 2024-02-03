@@ -21,9 +21,9 @@ class RaydiumSwap {
   connection: Connection
   wallet: Wallet
 
-  constructor(RPC_URL: string, WALLET_PRIVATE_KEY: string) {
-    this.connection = new Connection(RPC_URL, { commitment: 'confirmed' })
-    this.wallet = new Wallet(Keypair.fromSecretKey(base58.decode(WALLET_PRIVATE_KEY)))
+  constructor(connection: Connection, privateKey: string) {
+    this.connection = connection
+    this.wallet = new Wallet(Keypair.fromSecretKey(base58.decode(privateKey)))
   }
 
   async loadPoolKeys() {
@@ -35,7 +35,7 @@ class RaydiumSwap {
     this.allPoolKeysJson = allPoolKeysJson
   }
 
-  findPoolInfoForTokens(mintA: string, mintB: string) {
+  findPoolInfoForTokens(mintA: string, mintB: string): LiquidityPoolKeys | null {
     const poolData = this.allPoolKeysJson.find(
       (i) => (i.baseMint === mintA && i.quoteMint === mintB) || (i.baseMint === mintB && i.quoteMint === mintA)
     )

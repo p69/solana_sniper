@@ -1,25 +1,26 @@
 import * as dotenv from 'dotenv';
 dotenv.config();
 import RaydiumSwap from './RaydiumSwap'
-import { Transaction, VersionedTransaction } from '@solana/web3.js'
+import { Connection, Transaction, VersionedTransaction } from '@solana/web3.js'
 import { printTime } from './Utils';
 import { runNewPoolObservation } from './RaydiumNewPool'
 
-const swap = async () => {
+const SOL = 'So11111111111111111111111111111111111111112';
+
+const connection = new Connection(process.env.RPC_URL!, {
+  wsEndpoint: process.env.WS_URL!
+});
+
+const raydiumSwap = new RaydiumSwap(connection, process.env.WALLET_PRIVATE_KEY!);
+
+const swap = async (tokenBAddress: string) => {
   const swapStartDate = new Date();
   const executeSwap = true // Change to true to execute swap
   const useVersionedTransaction = false // Use versioned transaction
   const tokenAAmount = 0.01 // e.g. 0.01 SOL -> B_TOKEN
 
   const tokenAAddress = 'So11111111111111111111111111111111111111112' // e.g. SOLANA mint address
-  const tokenBAddress = 'HZ1JovNiVvGrGNiiYvEozEVgZ58xaU3RKwX8eACQBCt3' // e.g. PYTH mint address
-
-  const raydiumSwap = new RaydiumSwap(process.env.RPC_URL!, process.env.WALLET_PRIVATE_KEY!)
-  console.log(`Raydium swap initialized`)
-
-  // Loading with pool keys from https://api.raydium.io/v2/sdk/liquidity/mainnet.json
-  await raydiumSwap.loadPoolKeys()
-  console.log(`Loaded pool keys`)
+  //const tokenBAddress = 'HZ1JovNiVvGrGNiiYvEozEVgZ58xaU3RKwX8eACQBCt3' // e.g. PYTH mint address
 
   // Trying to find pool info in the json we loaded earlier and by comparing baseMint and tokenBAddress
   const poolInfo = raydiumSwap.findPoolInfoForTokens(tokenAAddress, tokenBAddress)
@@ -56,5 +57,28 @@ const swap = async () => {
   }
 }
 
+let isSwapping = false;
+async function main() {
+  // Loading with pool keys from https://api.raydium.io/v2/sdk/liquidity/mainnet.json
+  await raydiumSwap.loadPoolKeys()
+  console.log(`Loaded pool keys`)
+
+  runNewPoolObservation(connection, (tokenA, tokenB) => {
+    if (isSwapping) {
+      return;
+    }
+
+    if (tokenA === SOL) {
+      isSwapping = true;
+      //swap(tokenB);
+    }
+
+    if (tokenB === SOL) {
+      isSwapping = true;
+      //swap(tokenA);
+    }
+    console.log("swap completed");
+  });
+};
 //swap()
-runNewPoolObservation()
+main().catch(console.error);
