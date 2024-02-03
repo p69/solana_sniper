@@ -2,10 +2,13 @@ import * as dotenv from 'dotenv';
 dotenv.config();
 import RaydiumSwap from './RaydiumSwap'
 import { Transaction, VersionedTransaction } from '@solana/web3.js'
+import { printTime } from './Utils';
+import { runNewPoolObservation } from './RaydiumNewPool'
 
 const swap = async () => {
+  const swapStartDate = new Date();
   const executeSwap = true // Change to true to execute swap
-  const useVersionedTransaction = true // Use versioned transaction
+  const useVersionedTransaction = false // Use versioned transaction
   const tokenAAmount = 0.01 // e.g. 0.01 SOL -> B_TOKEN
 
   const tokenAAddress = 'So11111111111111111111111111111111111111112' // e.g. SOLANA mint address
@@ -40,7 +43,10 @@ const swap = async () => {
       ? await raydiumSwap.sendVersionedTransaction(tx as VersionedTransaction)
       : await raydiumSwap.sendLegacyTransaction(tx as Transaction)
 
+    const swapEndDate = new Date();
     console.log(`https://solscan.io/tx/${txid}`)
+    printTime(swapStartDate);
+    printTime(swapEndDate);
   } else {
     const simRes = useVersionedTransaction
       ? await raydiumSwap.simulateVersionedTransaction(tx as VersionedTransaction)
@@ -50,4 +56,5 @@ const swap = async () => {
   }
 }
 
-swap()
+//swap()
+runNewPoolObservation()

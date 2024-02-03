@@ -10,9 +10,11 @@ import {
   TOKEN_PROGRAM_ID,
   Percent,
   SPL_ACCOUNT_LAYOUT,
+  TradeV2
 } from '@raydium-io/raydium-sdk'
 import { Wallet } from '@project-serum/anchor'
 import base58 from 'bs58'
+import { printTime } from './Utils';
 
 class RaydiumSwap {
   allPoolKeysJson: LiquidityPoolJsonInfo[] = []
@@ -127,11 +129,14 @@ class RaydiumSwap {
   }
 
   async sendVersionedTransaction(tx: VersionedTransaction) {
+    const time = new Date()
+    console.log("Start sending with retry")
     const txid = await this.connection.sendTransaction(tx, {
       skipPreflight: true,
-      maxRetries: 2,
+      maxRetries: 3,
     })
-
+    console.log("Finished sending with retry")
+    printTime(time)
     return txid
   }
 
