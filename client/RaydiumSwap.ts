@@ -1,4 +1,4 @@
-import { Connection, PublicKey, Keypair, Transaction, VersionedTransaction, TransactionMessage } from '@solana/web3.js'
+import { Connection, PublicKey, Keypair, Transaction, VersionedTransaction, TransactionMessage, TokenBalance } from '@solana/web3.js'
 import {
   Liquidity,
   LiquidityPoolKeys,
@@ -33,6 +33,17 @@ class RaydiumSwap {
     const allPoolKeysJson = [...(liquidityJson?.official ?? []), ...(liquidityJson?.unOfficial ?? [])]
 
     this.allPoolKeysJson = allPoolKeysJson
+  }
+
+  async getNewTokenBalance(hash: string, tokenAddress: string): Promise<TokenBalance | undefined> {
+    const tr = await this.connection.getTransaction(hash);
+    const postTokenBalances = tr?.meta?.postTokenBalances;
+    if (postTokenBalances === null || postTokenBalances === undefined) {
+      return undefined;
+    }
+
+    const tokenBalance = postTokenBalances.find((x) => x.mint === tokenAddress);
+    return tokenBalance;
   }
 
   findPoolInfoForTokens(mintA: string, mintB: string): LiquidityPoolKeys | null {
