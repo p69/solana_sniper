@@ -1,11 +1,12 @@
 import * as dotenv from 'dotenv';
 dotenv.config();
 import RaydiumSwap from './RaydiumSwap'
-import { Connection, Transaction, VersionedTransaction, TokenBalance } from '@solana/web3.js'
+import { Connection, Transaction, VersionedTransaction, TokenBalance, PublicKey } from '@solana/web3.js'
 import { printTime } from './Utils';
 import { runNewPoolObservation } from './RaydiumNewPool'
 import { LiquidityPoolKeys } from "@raydium-io/raydium-sdk";
 
+const OWNER_ADDRESS = new PublicKey(process.env.WALLET_PUBLIC_KEY!);
 const SOL = 'So11111111111111111111111111111111111111112';
 const JUP = 'JUPyiwrYJFskUPiHa7hkeR8VUtAeFoSYbKedZNsDvCN';
 
@@ -23,10 +24,6 @@ const swap = async (tokenAAddress: string, tokenBAddress: string, pool: Liquidit
 
   // const tokenAAddress = SOL // e.g. SOLANA mint address
   //const tokenBAddress = 'HZ1JovNiVvGrGNiiYvEozEVgZ58xaU3RKwX8eACQBCt3' // e.g. PYTH mint address
-
-  await raydiumSwap.loadPoolKeys()
-  console.log(`Loaded pool keys`)
-
 
   const poolInfo = pool //raydiumSwap.findPoolInfoForTokens(tokenAAddress, tokenBAddress)
   if (poolInfo === null) {
@@ -53,12 +50,18 @@ const swap = async (tokenAAddress: string, tokenBAddress: string, pool: Liquidit
     console.log(`https://solscan.io/tx/${txid}`)
     const swapBackStartDate = new Date();
     let newBalance: TokenBalance
+    let retryCount = 0
     while (true) {
+      if (retryCount > 50) {
+        console.log("Most likely transaction has failed");
+        return;
+      }
       const b = await raydiumSwap.getNewTokenBalance(txid, tokenBAddress);
       if (b !== undefined) {
         newBalance = b;
         break;
       }
+      retryCount += 1;
     }
 
     console.log("Shiticoins amount: " + newBalance.uiTokenAmount.uiAmountString ?? "");
@@ -78,17 +81,17 @@ const swap = async (tokenAAddress: string, tokenBAddress: string, pool: Liquidit
 
 
     console.log(`Swap Back https://solscan.io/tx/${swapBackTxid}`)
-    let finalBalance: TokenBalance
-    while (true) {
-      const b = await raydiumSwap.getNewTokenBalance(swapBackTxid, tokenAAddress);
-      if (b !== undefined) {
-        finalBalance = b;
-        break;
-      }
-    }
+    let finalBalance = await connection.getBalance(OWNER_ADDRESS);
+    // while (true) {
+    //   const b = await raydiumSwap.getNewTokenBalance(swapBackTxid, tokenAAddress);
+    //   if (b !== undefined) {
+    //     finalBalance = b;
+    //     break;
+    //   }
+    // }
     const swapBackEndDate = new Date();
-    console.log(`Final sol balance: ${finalBalance.uiTokenAmount.uiAmountString}`)
-    console.log("Swap In");
+    console.log(`Final sol balance: ${finalBalance}`)
+    console.log("Swap Back");
     printTime(swapStartDate);
     printTime(swapEndDate);
     console.log("Swap Out");
@@ -105,11 +108,7 @@ const swap = async (tokenAAddress: string, tokenBAddress: string, pool: Liquidit
 
 let isSwapping = false;
 async function main() {
-  // Loading with pool keys from https://api.raydium.io/v2/sdk/liquidity/mainnet.json
-
-  // swap(JUP).catch(console.error);
-
-  runNewPoolObservation(connection, (tokenA, tokenB, pool) => {
+  runNewPoolObservation(connection, async (tokenA, tokenB, pool) => {
     if (isSwapping) {
       return;
     }
@@ -119,11 +118,13 @@ async function main() {
     if (tokenA === SOL) {
       isSwapping = true;
       console.log("Start swapping");
-      swap(tokenA, tokenB, pool);
+      await swap(tokenA, tokenB, pool);
+      isSwapping = false;
     } else if (tokenB === SOL) {
       isSwapping = true;
       console.log("Start swapping");
-      swap(tokenB, tokenA, pool);
+      await swap(tokenB, tokenA, pool);
+      isSwapping = false;
     } else {
       console.log("No SOL tokens. Skip");
     }

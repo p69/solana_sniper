@@ -17,6 +17,8 @@ import { Wallet } from '@project-serum/anchor'
 import base58 from 'bs58'
 import { printTime } from './Utils';
 
+const OWNER_ADDRESS = new PublicKey(process.env.WALLET_PUBLIC_KEY!);
+
 class RaydiumSwap {
   allPoolKeysJson: LiquidityPoolJsonInfo[] = []
   connection: Connection
@@ -43,7 +45,7 @@ class RaydiumSwap {
       return undefined;
     }
 
-    const tokenBalance = postTokenBalances.find((x) => x.mint === tokenAddress);
+    const tokenBalance = postTokenBalances.find((x) => x.mint === tokenAddress && x.owner === OWNER_ADDRESS.toString());
     return tokenBalance;
   }
 
