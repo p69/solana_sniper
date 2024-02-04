@@ -4,6 +4,7 @@ import RaydiumSwap from './RaydiumSwap'
 import { Connection, Transaction, VersionedTransaction, TokenBalance } from '@solana/web3.js'
 import { printTime } from './Utils';
 import { runNewPoolObservation } from './RaydiumNewPool'
+import { LiquidityPoolKeys } from "@raydium-io/raydium-sdk";
 
 const SOL = 'So11111111111111111111111111111111111111112';
 const JUP = 'JUPyiwrYJFskUPiHa7hkeR8VUtAeFoSYbKedZNsDvCN';
@@ -14,7 +15,7 @@ const connection = new Connection(process.env.RPC_URL!, {
 
 const raydiumSwap = new RaydiumSwap(connection, process.env.WALLET_PRIVATE_KEY!);
 
-const swap = async (tokenAAddress: string, tokenBAddress: string) => {
+const swap = async (tokenAAddress: string, tokenBAddress: string, pool: LiquidityPoolKeys) => {
   const swapStartDate = new Date();
   const executeSwap = true // Change to true to execute swap
   const useVersionedTransaction = false // Use versioned transaction
@@ -26,8 +27,8 @@ const swap = async (tokenAAddress: string, tokenBAddress: string) => {
   await raydiumSwap.loadPoolKeys()
   console.log(`Loaded pool keys`)
 
-  // Trying to find pool info in the json we loaded earlier and by comparing baseMint and tokenBAddress
-  const poolInfo = raydiumSwap.findPoolInfoForTokens(tokenAAddress, tokenBAddress)
+
+  const poolInfo = pool //raydiumSwap.findPoolInfoForTokens(tokenAAddress, tokenBAddress)
   if (poolInfo === null) {
     console.error("No Pool Info");
     return;
@@ -108,7 +109,7 @@ async function main() {
 
   // swap(JUP).catch(console.error);
 
-  runNewPoolObservation(connection, (tokenA, tokenB) => {
+  runNewPoolObservation(connection, (tokenA, tokenB, pool) => {
     if (isSwapping) {
       return;
     }
@@ -118,11 +119,11 @@ async function main() {
     if (tokenA === SOL) {
       isSwapping = true;
       console.log("Start swapping");
-      swap(tokenA, tokenB);
+      swap(tokenA, tokenB, pool);
     } else if (tokenB === SOL) {
       isSwapping = true;
       console.log("Start swapping");
-      swap(tokenB, tokenA);
+      swap(tokenB, tokenA, pool);
     } else {
       console.log("No SOL tokens. Skip");
     }

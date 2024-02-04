@@ -2,6 +2,7 @@ import { Connection, PublicKey, Keypair, Transaction, VersionedTransaction, Tran
 import {
   Liquidity,
   LiquidityPoolKeys,
+  LiquidityAssociatedPoolKeys,
   jsonInfo2PoolKeys,
   LiquidityPoolJsonInfo,
   TokenAccount,
