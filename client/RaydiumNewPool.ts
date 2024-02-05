@@ -82,7 +82,7 @@ function sleep(ms: number) {
   return new Promise(resolve => setTimeout(resolve, ms));
 }
 
-async function fetchPoolKeys(
+export async function fetchPoolKeys(
   connection: Connection,
   poolId: PublicKey,
   version: 4 | 5 = 4): Promise<LiquidityPoolKeys> {

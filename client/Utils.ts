@@ -11,3 +11,11 @@ export function formatDate(date: Date): string {
   const formattedTime = `${hours}:${minutes}:${seconds}.${milliseconds}`;
   return formattedTime;
 }
+
+export function timeout(ms: number): Promise<never> {
+  return new Promise((_, reject) => {
+    setTimeout(() => {
+      reject(new Error(`Timed out after ${ms}ms`));
+    }, ms);
+  });
+}

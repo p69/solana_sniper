@@ -143,14 +143,10 @@ class RaydiumSwap {
   }
 
   async sendVersionedTransaction(tx: VersionedTransaction) {
-    const time = new Date()
-    console.log("Start sending with retry")
     const txid = await this.connection.sendTransaction(tx, {
       skipPreflight: true,
       maxRetries: 3,
     })
-    console.log("Finished sending with retry")
-    printTime(time)
     return txid
   }
 
