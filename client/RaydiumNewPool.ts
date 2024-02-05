@@ -3,6 +3,7 @@ import { printTime } from "./Utils";
 import { Liquidity, LiquidityPoolKeys, Market } from "@raydium-io/raydium-sdk";
 const RAYDIUM_PUBLIC_KEY = ('675kPX9MHTjS2zt1qfr1NYHuzeLXfQM9H24wFSUt1Mp8');
 const raydium = new PublicKey(RAYDIUM_PUBLIC_KEY);
+import chalk from 'chalk';
 // const connection = new Connection(process.env.RPC_URL!, {
 //   wsEndpoint: process.env.WS_URL!
 // });
@@ -10,7 +11,7 @@ const raydium = new PublicKey(RAYDIUM_PUBLIC_KEY);
 let processedSignatures = new Set();
 
 async function main(connection: Connection, raydium: PublicKey, onNewPair: (tokenSource: string, tokenDestination: string, pool: LiquidityPoolKeys) => void) {
-  console.log('Monitoring logs...', raydium.toString());
+  console.log(`${chalk.cyan('Monitoring logs...')} ${chalk.bold(raydium.toString())}`);
   connection.onLogs(raydium, async ({ logs, err, signature }) => {
     if (err) return;
     if (logs && logs.some(log => log.includes('initialize2') && !processedSignatures.has(signature))) {
@@ -179,7 +180,10 @@ async function fetchPoolKeys(
 
 
 // main(connection,raydium).catch(console.error);
-export async function runNewPoolObservation(connection: Connection, onNewPair: (tokenSource: string, tokenDestination: string, pool: LiquidityPoolKeys) => void) {
+export async function runNewPoolObservation(onNewPair: (tokenSource: string, tokenDestination: string, pool: LiquidityPoolKeys) => void) {
+  const connection = new Connection(process.env.RPC_URL!, {
+    wsEndpoint: process.env.WS_URL!
+  });
   await main(connection, raydium, onNewPair);
   // try {
   //   await main(connection, raydium);

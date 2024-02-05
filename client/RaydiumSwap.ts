@@ -39,7 +39,7 @@ class RaydiumSwap {
   }
 
   async getNewTokenBalance(hash: string, tokenAddress: string): Promise<TokenBalance | undefined> {
-    const tr = await this.connection.getTransaction(hash);
+    const tr = await this.connection.getTransaction(hash, { "maxSupportedTransactionVersion": 0 });
     const postTokenBalances = tr?.meta?.postTokenBalances;
     if (postTokenBalances === null || postTokenBalances === undefined) {
       return undefined;
