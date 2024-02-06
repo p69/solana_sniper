@@ -164,7 +164,7 @@ async function getWSOLBalance(): Promise<number> {
 }
 
 async function testWithExistingPool() {
-  const POOL_ID = '7Gs7Th8JfTYAdVPT5S35uTELd3kRCJzz67WaBi4M7LvR';
+  const POOL_ID = 'sxndK2DgPsbrJSW6UpuYpudrYgeUAA8yGDdy3RmzGbD';
   const SHIT_COIN_ADDRESS = 'DUAXVeRMCn64PopKRX9vND9MwUjutv7z8gf4beVWk6nM';
 
   const raydiumSwap = new RaydiumSwap(connection, process.env.WALLET_PRIVATE_KEY!);
@@ -194,7 +194,12 @@ async function handleNewPool(pool: LiquidityPoolKeysV4) {
   isSwapping = true;
   console.log("Start swapping");
   const tokenBToken = new Token(TOKEN_PROGRAM_ID, tokenBMint, tokenBDecimals)
-  await swap(tokenBToken, pool, SOL_SPL_TOKEN_ADDRESS);
+  try {
+    await swap(tokenBToken, pool, SOL_SPL_TOKEN_ADDRESS);
+  } catch (e) {
+    console.log(`${chalk.red(`Swapping failed with error: ${e}`)}`)
+  }
+
   isSwapping = false;
   console.log("End swapping");
 }
