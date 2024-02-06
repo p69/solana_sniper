@@ -5,7 +5,8 @@
   "main": "index.js",
   "scripts": {
     "build": "tsc",
-    "start": "node client/dist/index.js"
+    "start": "node client/dist/index.js",
+    "single": "node client/dist/SwapTest.js"
   },
   "keywords": [],
   "author": "",

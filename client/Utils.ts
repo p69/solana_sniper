@@ -1,5 +1,6 @@
 import { TOKEN_PROGRAM_ID, TokenAccount, SPL_ACCOUNT_LAYOUT } from '@raydium-io/raydium-sdk';
 import { Connection, PublicKey, SignatureResult, Commitment, TokenBalance } from '@solana/web3.js'
+import splToken from '@solana/spl-token';
 import chalk from 'chalk';
 
 export function printTime(date: Date) {
@@ -101,4 +102,8 @@ export async function getNewTokenBalance(connection: Connection, hash: string, t
   }
   const tokenBalance = postTokenBalances.find((x) => x.mint === tokenAddress && x.owner === ownerAddress);
   return tokenBalance;
+}
+
+export async function makeTokenAccount() {
+  //splToken.createAssociatedTokenAccountIdempotent
 }
