@@ -1,31 +1,93 @@
 import { Connection, PublicKey, ParsedInstruction, PartiallyDecodedInstruction } from "@solana/web3.js";
-import { printTime } from "./Utils";
-import { Liquidity, LiquidityPoolKeys, Market } from "@raydium-io/raydium-sdk";
-const RAYDIUM_PUBLIC_KEY = ('675kPX9MHTjS2zt1qfr1NYHuzeLXfQM9H24wFSUt1Mp8');
+import { formatDate, printTime } from "./Utils";
+import { Liquidity, LiquidityPoolKeys, LiquidityPoolKeysV4, Market } from "@raydium-io/raydium-sdk";
+const RAYDIUM_PUBLIC_KEY = '675kPX9MHTjS2zt1qfr1NYHuzeLXfQM9H24wFSUt1Mp8';
 const raydium = new PublicKey(RAYDIUM_PUBLIC_KEY);
 import chalk from 'chalk';
+import { fetchPoolKeysForLPInitTransactionHash, findLogEntry } from "./PoolMaker";
+import { BN } from "@project-serum/anchor";
 // const connection = new Connection(process.env.RPC_URL!, {
 //   wsEndpoint: process.env.WS_URL!
 // });
 
+function lamportsToSOLNumber(lamportsBN: BN): number | undefined {
+  const SOL_DECIMALS = 9; // SOL has 9 decimal places
+  const divisor = new BN(10).pow(new BN(SOL_DECIMALS));
+
+  // Convert lamports to SOL as a BN to maintain precision
+  const solBN = lamportsBN.div(divisor);
+
+  // Additionally, handle fractional part if necessary
+  const fractionalBN = lamportsBN.mod(divisor);
+
+  // Convert integer part to number
+  if (solBN.lte(new BN(Number.MAX_SAFE_INTEGER))) {
+    const integerPart = solBN.toNumber();
+    const fractionalPart = fractionalBN.toNumber() / Math.pow(10, SOL_DECIMALS);
+
+    // Combine integer and fractional parts
+    const total = integerPart + fractionalPart;
+
+    return total;
+  } else {
+    console.warn('The amount of SOL exceeds the safe integer limit for JavaScript numbers.');
+    return undefined; // or handle as appropriate
+  }
+}
+
 let processedSignatures = new Set();
 
-async function main(connection: Connection, raydium: PublicKey, onNewPair: (tokenSource: string, tokenDestination: string, pool: LiquidityPoolKeys) => void) {
+const seenTransactions: Array<string> = [];
+async function main(connection: Connection, raydium: PublicKey, onNewPair: (pool: LiquidityPoolKeysV4) => void) {
   console.log(`${chalk.cyan('Monitoring logs...')} ${chalk.bold(raydium.toString())}`);
-  connection.onLogs(raydium, async ({ logs, err, signature }) => {
-    if (err) return;
-    if (logs && logs.some(log => log.includes('initialize2') && !processedSignatures.has(signature))) {
-      processedSignatures.add(signature);
-      console.log('Signature for Initialize2:', signature);
-      printTime(new Date());
-      const tokens = await fetchRaydiumAccounts(signature, connection);
-      if (tokens === null) {
-        return
-      }
-      const [tokenA, tokenB, pool] = tokens
-      onNewPair(tokenA, tokenB, pool);
+
+  connection.onLogs(raydium, async (txLogs) => {
+    if (seenTransactions.includes(txLogs.signature)) {
+      return;
     }
-  }, "finalized");
+    seenTransactions.push(txLogs.signature);
+    if (!findLogEntry('init_pc_amount', txLogs.logs)) {
+      return; // If "init_pc_amount" is not in log entries then it's not LP initialization transaction
+    }
+    try {
+      const date = new Date();
+      const poolKeys = await fetchPoolKeysForLPInitTransactionHash(txLogs.signature, connection); // With poolKeys you can do a swap
+      console.log(`Found new POOL at ${chalk.bgYellow(formatDate(date))}`);
+      const info = await Liquidity.fetchInfo({ connection: connection, poolKeys: poolKeys });
+      const quoteTokenBalance = await connection.getTokenAccountBalance(poolKeys.quoteVault);
+      const liquitityInSol = quoteTokenBalance.value.uiAmount;
+      //const liquitityInSol = lamportsToSOLNumber(info.quoteReserve);
+      if (liquitityInSol === null) {
+        console.log(`${chalk.bgRed('Pool found but liquiidity is undefiened. Skipping.')} ${poolKeys.id.toString()}`);
+        return;
+      } else if (liquitityInSol < 50) {
+        console.log(`${chalk.bgRed('Pool found but liquiidity is low. Skipping.')} ${liquitityInSol} SOL ${poolKeys.id.toString()}`);
+        return;
+      }
+
+      console.log(`${chalk.yellow('New POOL:')} ${poolKeys.id.toString()}  ${liquitityInSol} SOL`);
+      onNewPair(poolKeys);
+    } catch (e) {
+      console.error(`Failed to fetch TX ${chalk.yellow(txLogs.signature)}`);
+    }
+
+  });
+  console.log('Listening to new pools...');
+
+  // connection.onLogs(raydium, async ({ logs, err, signature }) => {
+  //   if (err) return;
+  //   if (logs && logs.some(log => log.includes('initialize2') && !processedSignatures.has(signature))) {
+  //     processedSignatures.add(signature);
+  //     console.log('Signature for Initialize2:', signature);
+  //     printTime(new Date());
+  //     const tokens = await fetchRaydiumAccounts(signature, connection);
+  //     if (tokens === null) {
+  //       return
+  //     }
+  //     const [tokenA, tokenB, pool] = tokens
+  //     onNewPair(tokenA, tokenB, pool);
+  //   }
+  // }, "finalized");
 }
 
 async function fetchRaydiumAccounts(signature: string, connection: Connection): Promise<[string, string, LiquidityPoolKeys] | null> {
@@ -180,7 +242,7 @@ export async function fetchPoolKeys(
 
 
 // main(connection,raydium).catch(console.error);
-export async function runNewPoolObservation(onNewPair: (tokenSource: string, tokenDestination: string, pool: LiquidityPoolKeys) => void) {
+export async function runNewPoolObservation(onNewPair: (pool: LiquidityPoolKeysV4) => void) {
   const connection = new Connection(process.env.RPC_URL!, {
     wsEndpoint: process.env.WS_URL!
   });

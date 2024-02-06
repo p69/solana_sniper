@@ -14,6 +14,17 @@
         "${workspaceFolder}/client/dist/**/*.js"
       ],
       "sourceMaps": true
+    },
+    {
+      "type": "node",
+      "request": "launch",
+      "name": "Launch Single Swap",
+      "preLaunchTask": "tsc: build - tsconfig.json",
+      "program": "${workspaceFolder}/client/SwapTest.ts",
+      "outFiles": [
+        "${workspaceFolder}/client/dist/**/*.js"
+      ],
+      "sourceMaps": true
     }
   ]
 }

@@ -38,14 +38,16 @@ class RaydiumSwap {
     this.allPoolKeysJson = allPoolKeysJson
   }
 
-  async getNewTokenBalance(hash: string, tokenAddress: string): Promise<TokenBalance | undefined> {
-    const tr = await this.connection.getTransaction(hash, { "maxSupportedTransactionVersion": 0 });
+  async getNewTokenBalance(hash: string, tokenAddress: PublicKey): Promise<TokenBalance | undefined> {
+    const tr = await this.connection.getTransaction(hash);
     const postTokenBalances = tr?.meta?.postTokenBalances;
     if (postTokenBalances === null || postTokenBalances === undefined) {
       return undefined;
     }
 
-    const tokenBalance = postTokenBalances.find((x) => x.mint === tokenAddress && x.owner === OWNER_ADDRESS.toString());
+    const addressStr = tokenAddress.toString();
+
+    const tokenBalance = postTokenBalances.find((x) => x.mint === addressStr && x.owner === OWNER_ADDRESS.toString());
     return tokenBalance;
   }
 
@@ -72,7 +74,7 @@ class RaydiumSwap {
   }
 
   async getSwapTransaction(
-    toToken: string,
+    toToken: PublicKey,
     // fromToken: string,
     amount: number,
     poolKeys: LiquidityPoolKeys,
@@ -80,7 +82,7 @@ class RaydiumSwap {
     useVersionedTransaction = true,
     fixedSide: 'in' | 'out' = 'in'
   ): Promise<Transaction | VersionedTransaction> {
-    const directionIn = poolKeys.quoteMint.toString() == toToken
+    const directionIn = poolKeys.quoteMint.toString() == toToken.toString()
     const { minAmountOut, amountIn } = await this.calcAmountOut(poolKeys, amount, directionIn)
 
     const userTokenAccounts = await this.getOwnerTokenAccounts()
@@ -191,7 +193,7 @@ class RaydiumSwap {
     const currencyIn = new Token(TOKEN_PROGRAM_ID, currencyInMint, currencyInDecimals)
     const amountIn = new TokenAmount(currencyIn, rawAmountIn, false)
     const currencyOut = new Token(TOKEN_PROGRAM_ID, currencyOutMint, currencyOutDecimals)
-    const slippage = new Percent(5, 100) // 5% slippage
+    const slippage = swapInDirection ? (new Percent(20, 100)) : (new Percent(5, 100)); // 10% slippage
 
     const { amountOut, minAmountOut, currentPrice, executionPrice, priceImpact, fee } = Liquidity.computeAmountOut({
       poolKeys,
