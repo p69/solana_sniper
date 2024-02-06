@@ -2,8 +2,8 @@ import * as dotenv from 'dotenv';
 dotenv.config();
 import { Connection, PublicKey, Keypair } from '@solana/web3.js'
 import { confirmTransaction, findTokenAccountAddress, getTokenAccounts, getNewTokenBalance } from './Utils';
-import { TokenAmount, Token, Percent, jsonInfo2PoolKeys, LiquidityPoolKeys, WSOL } from "@raydium-io/raydium-sdk";
-import { TOKEN_PROGRAM_ID, getAssociatedTokenAddressSync } from '@solana/spl-token';
+import { TokenAmount, Token, Percent, jsonInfo2PoolKeys, LiquidityPoolKeys, WSOL, ASSOCIATED_TOKEN_PROGRAM_ID } from "@raydium-io/raydium-sdk";
+import { NATIVE_MINT, TOKEN_PROGRAM_ID, getAssociatedTokenAddressSync } from '@solana/spl-token';
 import { Wallet } from '@project-serum/anchor'
 import base58 from 'bs58'
 import { swapOnlyCLMM } from "./CllmSwap"
@@ -16,30 +16,20 @@ import { swapTokens, sellTokens } from './Swap';
 import RaydiumSwap from './RaydiumSwap';
 
 const wallet = new Wallet(Keypair.fromSecretKey(base58.decode(process.env.WALLET_PRIVATE_KEY!)));
-const SOL = 'So11111111111111111111111111111111111111112';
-const SOL_KEY = new PublicKey(SOL);
-const JUP = 'JUPyiwrYJFskUPiHa7hkeR8VUtAeFoSYbKedZNsDvCN';
-const JUP_MARKET_ID = '7WMCUyZXrDxNjAWjuh2r7g8CdT2guqvrmdUPAnGdLsfG';
-const SHIT = '7TKnJjMumNAmks1BCMnNtS3aifDevcELVPE3Zr2s5ikW';
-const SHIT_POOL_ID = 'FNXyrkFRzbcVzvwAzvL7gHa2aWWLz2xVaZTf8RC8G6Nd';
+const SHIT = '3CP4u2awmdmmtWKmSc4a5SSHYoCfbfpQHdEoYsz5YgFi';
+const SHIT_POOL_ID = '4dFWaFhpWCvFoACveHQQkC6mifP22emi6X2DK2LgFcpM';
 const BUY_AMOUNT_IN_SOL = 0.01 // e.g. 0.01 SOL -> B_TOKEN
-
-// const [SOL_SPL_TOKEN_ADDRESS] = PublicKey.findProgramAddressSync(
-//   [OWNER_ADDRESS.toBuffer(), TOKEN_PROGRAM_ID.toBuffer(), NATIVE_MINT.toBuffer()],
-//   ASSOCIATED_TOKEN_PROGRAM_ID
-// );
-
 
 
 const connection = new Connection(process.env.RPC_URL!, {
   wsEndpoint: process.env.WS_URL!, commitment: 'confirmed'
 });
 
-const raydiumSwap = new RaydiumSwap(connection, process.env.WALLET_PRIVATE_KEY!);
-
 async function runSwapTest() {
-  //const tokenAccounts = await getTokenAccounts(connection, wallet.publicKey);
-
+  const [wsolAccountAddress] = PublicKey.findProgramAddressSync(
+    [wallet.publicKey.toBuffer(), TOKEN_PROGRAM_ID.toBuffer(), NATIVE_MINT.toBuffer()],
+    ASSOCIATED_TOKEN_PROGRAM_ID
+  );
 
   console.log('Startttt')
   const targetPoolInfo = await formatAmmKeysById(connection, SHIT_POOL_ID);
@@ -48,23 +38,18 @@ async function runSwapTest() {
   const tokenToSnipe = new Token(TOKEN_PROGRAM_ID, new PublicKey(SHIT), 9)
   const quoteToken = DEFAULT_TOKEN.WSOL;
   const quoteTokenAmount = new TokenAmount(quoteToken, 0.01, false)
-  const buySlippage = new Percent(10, 100)
-  const sellSlippage = new Percent(20, 100)
   const allWalletTokenAccounts = await getWalletTokenAccount(connection, wallet.publicKey)
-  const wsolAccount = allWalletTokenAccounts.find(
-    (acc) => acc.accountInfo.mint.toString() === SOL,
-  )!;
 
   const shitCoinAccount = allWalletTokenAccounts.find(
     (acc) => acc.accountInfo.mint.toString() === SHIT,
   )?.pubkey ?? getAssociatedTokenAddressSync(new PublicKey(SHIT), wallet.publicKey, false);
 
-  const startWsolBalance = await connection.getTokenAccountBalance(wsolAccount.pubkey)
+  const startWsolBalance = await connection.getTokenAccountBalance(wsolAccountAddress)
 
   const buyTxid = await swapTokens(
     connection,
     poolKeys,
-    wsolAccount.pubkey,
+    wsolAccountAddress,
     shitCoinAccount,
     wallet,
     quoteTokenAmount
@@ -125,7 +110,7 @@ async function runSwapTest() {
     connection,
     poolKeys,
     shitCoinAccount,
-    wsolAccount.pubkey,
+    wsolAccountAddress,
     wallet,
     sellTokenAmount
   );
@@ -155,19 +140,21 @@ async function runSwapTest() {
       connection,
       poolKeys,
       shitCoinAccount,
-      wsolAccount.pubkey,
+      wsolAccountAddress,
       wallet,
       sellTokenAmount
     );
+
+    console.log(`${chalk.yellow('Confirming...')}`);
+    const sellRetryConfirmed = await confirmTransaction(connection, sellTxid);
+    if (sellRetryConfirmed) {
+      console.log(`${chalk.green('Confirmed')}`);
+    } else {
+      console.log(`${chalk.red('Failed :( retry sell')}`);
+    }
   }
 
-  console.log(`${chalk.yellow('Confirming...')}`);
-  const sellRetryConfirmed = await confirmTransaction(connection, sellTxid);
-  if (sellRetryConfirmed) {
-    console.log(`${chalk.green('Confirmed')}`);
-  } else {
-    console.log(`${chalk.red('Failed :( retry sell')}`);
-  }
+
 
   const finalWsolBalance = await getNewTokenBalance(connection, sellTxid, WSOL.mint, wallet.publicKey.toString());
   const startNumber = startWsolBalance.value.uiAmount ?? 0;

@@ -42,7 +42,7 @@ export async function findTokenAccountAddress(connection: Connection, tokenMintA
 }
 
 async function getTransactionConfirmation(connection: Connection, txid: string): Promise<SignatureResult> {
-  const confirmResult = await connection.confirmTransaction({ signature: txid, ...(await connection.getLatestBlockhash()) });
+  const confirmResult = await connection.confirmTransaction({ signature: txid, ...(await connection.getLatestBlockhash()) }, 'confirmed');
   return confirmResult.value;
 }
 
@@ -50,7 +50,7 @@ export async function confirmTransaction(connection: Connection, txid: string): 
   try {
     const confirmResult = await Promise.race([
       getTransactionConfirmation(connection, txid),
-      timeout(15 * 1000)
+      timeout(30 * 1000)
     ])
     const transactionFailed = confirmResult.err !== null;
     if (transactionFailed) {

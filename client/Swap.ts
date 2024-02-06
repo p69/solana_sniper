@@ -1,4 +1,4 @@
-import { Liquidity, LiquidityPoolKeysV4, TokenAccount, TokenAmount } from "@raydium-io/raydium-sdk";
+import { Liquidity, LiquidityPoolKeysV4, Percent, SOL, TokenAccount, TokenAmount, WSOL } from "@raydium-io/raydium-sdk";
 import { Connection, PublicKey, Commitment, TransactionMessage, ComputeBudgetProgram, VersionedTransaction } from "@solana/web3.js";
 import {
   createAssociatedTokenAccountIdempotentInstruction
@@ -8,21 +8,23 @@ import { Wallet } from '@project-serum/anchor'
 export async function swapTokens(
   connection: Connection,
   poolKeys: LiquidityPoolKeysV4,
-  quoteTokenAccount: TokenAccount,
-  baseTokenAddess: PublicKey,
+  tokenAccountIn: PublicKey,
+  tokenAccountOut: PublicKey,
   signer: Wallet,
-  quoteAmount: TokenAmount,
+  amountIn: TokenAmount,
   commitment: Commitment = 'confirmed'
 ): Promise<string> {
+  const otherTokenMint = (poolKeys.baseMint.toString() === WSOL.mint) ? poolKeys.quoteMint : poolKeys.baseMint;
+  const associatedTokenAcc = (amountIn.token.mint.toString() === WSOL.mint) ? tokenAccountOut : tokenAccountIn;
   const { innerTransaction, address } = Liquidity.makeSwapFixedInInstruction(
     {
       poolKeys: poolKeys,
       userKeys: {
-        tokenAccountIn: quoteTokenAccount.pubkey,
-        tokenAccountOut: baseTokenAddess,
+        tokenAccountIn: tokenAccountIn,
+        tokenAccountOut: tokenAccountOut,
         owner: signer.publicKey,
       },
-      amountIn: quoteAmount.raw,
+      amountIn: amountIn.raw,
       minAmountOut: 0,
     },
     poolKeys.version,
@@ -39,9 +41,9 @@ export async function swapTokens(
       ComputeBudgetProgram.setComputeUnitPrice({ microLamports: 30000 }),
       createAssociatedTokenAccountIdempotentInstruction(
         signer.publicKey,
-        baseTokenAddess,
+        associatedTokenAcc,
         signer.publicKey,
-        poolKeys.baseMint,
+        otherTokenMint,
       ),
       ...innerTransaction.instructions,
     ],
