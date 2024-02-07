@@ -35,11 +35,13 @@ async function main(connection: Connection, raydium: PublicKey, onNewPair: (pool
       console.log(`Found new POOL at ${chalk.bgYellow(formatDate(date))}`);
       const info = await Liquidity.fetchInfo({ connection: connection, poolKeys: poolKeys });
       const features = Liquidity.getEnabledFeatures(info);
+
       if (!features.swap) {
         console.log(`${chalk.gray(`Swapping is disabled, skipping`)}`);
         poolIsProcessing = false;
         return;
       }
+
       const quoteTokenBalance = await connection.getTokenAccountBalance(poolKeys.lpVault);
       const liquitityInSol = quoteTokenBalance.value.uiAmount;
       //const liquitityInSol = lamportsToSOLNumber(info.quoteReserve);
@@ -47,7 +49,7 @@ async function main(connection: Connection, raydium: PublicKey, onNewPair: (pool
         poolIsProcessing = false;
         console.log(`${chalk.gray('Pool found but liquiidity is undefiened. Skipping.')} ${poolKeys.id.toString()}`);
         return;
-      } else if (liquitityInSol < 50) {
+      } else if (liquitityInSol < 10) {
         poolIsProcessing = false;
         console.log(`${chalk.gray('Pool found but liquiidity is low. Skipping.')} ${liquitityInSol} SOL ${poolKeys.id.toString()}`);
         return;

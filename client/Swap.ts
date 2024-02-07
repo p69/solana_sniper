@@ -232,7 +232,7 @@ export async function waitForProfitOrTimeout(
   try {
     lastProfitToTake = await Promise.race([
       loopAndWaitForProfit(spentAmount, targetProfitPercentage, connection, amountIn, tokenOut, poolKeys, cancellationToken),
-      timeout(40 * 1000, cancellationToken) // 40 seconds
+      timeout(20 * 1000, cancellationToken) // 20 seconds
     ]);
   } catch (e) {
     console.log(`Timeout happened ${chalk.bold('Profit to take: ')} ${lastProfitToTake < 0 ? chalk.red(lastProfitToTake) : chalk.green(lastProfitToTake)}`);

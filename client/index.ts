@@ -14,7 +14,7 @@ import RaydiumSwap from './RaydiumSwap';
 
 const OWNER_ADDRESS = new PublicKey(process.env.WALLET_PUBLIC_KEY!);
 const BUY_AMOUNT_IN_SOL = 0.05
-const PROFIT_IN_PERCENT = 0.15
+const PROFIT_IN_PERCENT = 0.10
 const WSOL_TOKEN = new Token(TOKEN_PROGRAM_ID, WSOL.mint, WSOL.decimals)
 const [SOL_SPL_TOKEN_ADDRESS] = PublicKey.findProgramAddressSync(
   [OWNER_ADDRESS.toBuffer(), TOKEN_PROGRAM_ID.toBuffer(), NATIVE_MINT.toBuffer()],
@@ -87,14 +87,34 @@ async function sellShitcoin(
 
   const swapStartDate = new Date();
 
-  let txid = await swapTokens(
-    connection,
-    poolInfo,
-    shitcoinAccountAddress,
-    mainTokenAccountAddress,
-    wallet,
-    amountToSell
-  );
+  let txid: string = '';
+  try {
+    txid = await swapTokens(
+      connection,
+      poolInfo,
+      shitcoinAccountAddress,
+      mainTokenAccountAddress,
+      wallet,
+      amountToSell
+    );
+  } catch (e) {
+    console.log(`${chalk.red(`Failed to sell with error ${e}`)}`);
+    console.log('Retrying');
+    try {
+      txid = await swapTokens(
+        connection,
+        poolInfo,
+        shitcoinAccountAddress,
+        mainTokenAccountAddress,
+        wallet,
+        amountToSell
+      );
+    } catch (e2) {
+      console.log(`${chalk.red(`Failed to sell with error ${e}`)}`);
+      return -1;
+    }
+  }
+
 
   const swapEndDate = new Date();
 
