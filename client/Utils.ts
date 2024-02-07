@@ -2,6 +2,7 @@ import { TOKEN_PROGRAM_ID, TokenAccount, SPL_ACCOUNT_LAYOUT } from '@raydium-io/
 import { Connection, PublicKey, SignatureResult, Commitment, TokenBalance } from '@solana/web3.js'
 import splToken from '@solana/spl-token';
 import chalk from 'chalk';
+import { BN } from '@project-serum/anchor';
 
 export function printTime(date: Date) {
   const formatted = formatDate(date);
@@ -17,12 +18,19 @@ export function formatDate(date: Date): string {
   return formattedTime;
 }
 
-export function timeout(ms: number): Promise<never> {
+export function timeout(ms: number, cancellationToken: { cancelled: boolean } | null = null): Promise<never> {
   return new Promise((_, reject) => {
     setTimeout(() => {
+      if (cancellationToken != null) {
+        cancellationToken.cancelled = true;
+      }
       reject(new Error(`Timed out after ${ms}ms`));
     }, ms);
   });
+}
+
+export function delay(ms: number): Promise<void> {
+  return new Promise(resolve => setTimeout(resolve, ms));
 }
 
 export async function findTokenAccountAddress(connection: Connection, tokenMintAddress: PublicKey, owner: PublicKey): Promise<PublicKey | null> {
@@ -106,4 +114,29 @@ export async function getNewTokenBalance(connection: Connection, hash: string, t
 
 export async function makeTokenAccount() {
   //splToken.createAssociatedTokenAccountIdempotent
+}
+
+export function lamportsToSOLNumber(lamportsBN: BN): number | undefined {
+  const SOL_DECIMALS = 9; // SOL has 9 decimal places
+  const divisor = new BN(10).pow(new BN(SOL_DECIMALS));
+
+  // Convert lamports to SOL as a BN to maintain precision
+  const solBN = lamportsBN.div(divisor);
+
+  // Additionally, handle fractional part if necessary
+  const fractionalBN = lamportsBN.mod(divisor);
+
+  // Convert integer part to number
+  if (solBN.lte(new BN(Number.MAX_SAFE_INTEGER))) {
+    const integerPart = solBN.toNumber();
+    const fractionalPart = fractionalBN.toNumber() / Math.pow(10, SOL_DECIMALS);
+
+    // Combine integer and fractional parts
+    const total = integerPart + fractionalPart;
+
+    return total;
+  } else {
+    console.warn('The amount of SOL exceeds the safe integer limit for JavaScript numbers.');
+    return undefined; // or handle as appropriate
+  }
 }

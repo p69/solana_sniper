@@ -10,38 +10,17 @@ import { BN } from "@project-serum/anchor";
 //   wsEndpoint: process.env.WS_URL!
 // });
 
-function lamportsToSOLNumber(lamportsBN: BN): number | undefined {
-  const SOL_DECIMALS = 9; // SOL has 9 decimal places
-  const divisor = new BN(10).pow(new BN(SOL_DECIMALS));
-
-  // Convert lamports to SOL as a BN to maintain precision
-  const solBN = lamportsBN.div(divisor);
-
-  // Additionally, handle fractional part if necessary
-  const fractionalBN = lamportsBN.mod(divisor);
-
-  // Convert integer part to number
-  if (solBN.lte(new BN(Number.MAX_SAFE_INTEGER))) {
-    const integerPart = solBN.toNumber();
-    const fractionalPart = fractionalBN.toNumber() / Math.pow(10, SOL_DECIMALS);
-
-    // Combine integer and fractional parts
-    const total = integerPart + fractionalPart;
-
-    return total;
-  } else {
-    console.warn('The amount of SOL exceeds the safe integer limit for JavaScript numbers.');
-    return undefined; // or handle as appropriate
-  }
-}
 
 let processedSignatures = new Set();
 
 const seenTransactions: Array<string> = [];
+let poolIsProcessing = false;
+
 async function main(connection: Connection, raydium: PublicKey, onNewPair: (pool: LiquidityPoolKeysV4) => void) {
   console.log(`${chalk.cyan('Monitoring logs...')} ${chalk.bold(raydium.toString())}`);
 
   connection.onLogs(raydium, async (txLogs) => {
+    if (poolIsProcessing) { return; }
     if (seenTransactions.includes(txLogs.signature)) {
       return;
     }
@@ -50,6 +29,7 @@ async function main(connection: Connection, raydium: PublicKey, onNewPair: (pool
       return; // If "init_pc_amount" is not in log entries then it's not LP initialization transaction
     }
     try {
+      poolIsProcessing = true;
       const date = new Date();
       const poolKeys = await fetchPoolKeysForLPInitTransactionHash(txLogs.signature, connection); // With poolKeys you can do a swap
       console.log(`Found new POOL at ${chalk.bgYellow(formatDate(date))}`);
@@ -57,15 +37,18 @@ async function main(connection: Connection, raydium: PublicKey, onNewPair: (pool
       const features = Liquidity.getEnabledFeatures(info);
       if (!features.swap) {
         console.log(`${chalk.gray(`Swapping is disabled, skipping`)}`);
+        poolIsProcessing = false;
         return;
       }
       const quoteTokenBalance = await connection.getTokenAccountBalance(poolKeys.lpVault);
       const liquitityInSol = quoteTokenBalance.value.uiAmount;
       //const liquitityInSol = lamportsToSOLNumber(info.quoteReserve);
       if (liquitityInSol === null) {
+        poolIsProcessing = false;
         console.log(`${chalk.gray('Pool found but liquiidity is undefiened. Skipping.')} ${poolKeys.id.toString()}`);
         return;
       } else if (liquitityInSol < 50) {
+        poolIsProcessing = false;
         console.log(`${chalk.gray('Pool found but liquiidity is low. Skipping.')} ${liquitityInSol} SOL ${poolKeys.id.toString()}`);
         return;
       }
@@ -73,6 +56,7 @@ async function main(connection: Connection, raydium: PublicKey, onNewPair: (pool
       console.log(`${chalk.yellow('New POOL:')} ${poolKeys.id.toString()}  ${liquitityInSol} SOL`);
       onNewPair(poolKeys);
     } catch (e) {
+      poolIsProcessing = false;
       console.error(`Failed to fetch TX ${chalk.yellow(txLogs.signature)}`);
     }
 
@@ -259,6 +243,10 @@ export async function runNewPoolObservation(onNewPair: (pool: LiquidityPoolKeysV
   //   console.log('Restarting the program...');
   //   runNewPoolObservation();
   // }
+}
+
+export function setPoolProcessed() {
+  poolIsProcessing = false;
 }
 
 //runProgram().catch(console.error);

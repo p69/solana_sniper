@@ -2,18 +2,20 @@ import * as dotenv from 'dotenv';
 dotenv.config();
 import { Connection, PublicKey, Keypair } from '@solana/web3.js'
 import { confirmTransaction, formatDate, getNewTokenBalance, getTokenAccounts } from './Utils';
-import { runNewPoolObservation } from './RaydiumNewPool'
+import { runNewPoolObservation, setPoolProcessed } from './RaydiumNewPool'
 import { ASSOCIATED_TOKEN_PROGRAM_ID, LiquidityPoolKeys, LiquidityPoolKeysV4, SOL, Token, TokenAccount, TokenAmount, WSOL } from "@raydium-io/raydium-sdk";
 import chalk from 'chalk';
 import { NATIVE_MINT, TOKEN_PROGRAM_ID, getAssociatedTokenAddressSync } from '@solana/spl-token';
 import { Wallet } from '@project-serum/anchor'
 import base58 from 'bs58'
-import { swapTokens } from './Swap';
+import { swapTokens, waitForProfitOrTimeout } from './Swap';
 import RaydiumSwap from './RaydiumSwap';
 //import { startObserving } from "./ObserveOpenBooks";
 
 const OWNER_ADDRESS = new PublicKey(process.env.WALLET_PUBLIC_KEY!);
-const BUY_AMOUNT_IN_SOL = 0.01
+const BUY_AMOUNT_IN_SOL = 0.05
+const PROFIT_IN_PERCENT = 0.15
+const WSOL_TOKEN = new Token(TOKEN_PROGRAM_ID, WSOL.mint, WSOL.decimals)
 const [SOL_SPL_TOKEN_ADDRESS] = PublicKey.findProgramAddressSync(
   [OWNER_ADDRESS.toBuffer(), TOKEN_PROGRAM_ID.toBuffer(), NATIVE_MINT.toBuffer()],
   ASSOCIATED_TOKEN_PROGRAM_ID
@@ -33,7 +35,7 @@ async function buyShitcoin(
   console.log(`Buying ${shitcoinAddress} for ${BUY_AMOUNT_IN_SOL} SOL`);
   const swapStartDate = new Date();
 
-  const buyAmount = new TokenAmount(new Token(TOKEN_PROGRAM_ID, WSOL.mint, WSOL.decimals), BUY_AMOUNT_IN_SOL, false)
+  const buyAmount = new TokenAmount(WSOL_TOKEN, BUY_AMOUNT_IN_SOL, false)
   const txid = await swapTokens(
     connection,
     poolInfo,
@@ -76,12 +78,14 @@ async function sellShitcoin(
   mainTokenAccountAddress: PublicKey,
   shitcoinAccountAddress: PublicKey,
   poolInfo: LiquidityPoolKeysV4): Promise<number> {
+
   console.log(`Selling ${amountToSell} shitcoins`);
+
+  console.log(`Calculating amountOut to sell with profit ${PROFIT_IN_PERCENT * 100}%`);
+
+  await waitForProfitOrTimeout(BUY_AMOUNT_IN_SOL, PROFIT_IN_PERCENT, connection, amountToSell, WSOL_TOKEN, poolInfo);
+
   const swapStartDate = new Date();
-
-  //const sellTokenAmount = new TokenAmount(new Token(TOKEN_PROGRAM_ID, shitcoinAddress.toString(), WSOL.decimals), amountToSell, false);
-
-  // const sellTxid = await sellTokens(connection, poolKeys, wsolAccount, shitCoinAcc, wallet, sellTokenAmount);
 
   let txid = await swapTokens(
     connection,
@@ -123,9 +127,9 @@ async function sellShitcoin(
   console.log(`Selling finished. Started at ${formatDate(swapStartDate)}, finished at ${formatDate(swapEndDate)}`);
   console.log(`Getting SELL transaction details https://solscan.io/tx/${txid}`);
 
-  let finalBalance = await getWSOLBalance();
+  await updateWSOLBalance();
 
-  return finalBalance;
+  return latestWSOLBalance;
 }
 
 const swap = async (
@@ -133,7 +137,7 @@ const swap = async (
   pool: LiquidityPoolKeys,
   mainTokenAccount: PublicKey) => {
   const tokenBAccountAddress = getAssociatedTokenAddressSync(tokenB.mint, wallet.publicKey, false);
-  const originalBalanceValue = await getWSOLBalance();
+  const originalBalanceValue = latestWSOLBalance;
 
   const poolInfo = pool
   if (poolInfo === null) {
@@ -158,9 +162,11 @@ const swap = async (
   console.log(`${chalk.bold("Profit: ")}: ${profit < 0 ? chalk.red(finalProfitString) : chalk.green(finalProfitString)}`);
 }
 
-async function getWSOLBalance(): Promise<number> {
+let latestWSOLBalance: number = 0;
+
+async function updateWSOLBalance() {
   const result = await connection.getTokenAccountBalance(SOL_SPL_TOKEN_ADDRESS);
-  return result.value.uiAmount ?? 0;
+  latestWSOLBalance = result.value.uiAmount ?? 0;
 }
 
 async function testWithExistingPool() {
@@ -209,9 +215,11 @@ async function main() {
   /// Uncomment to perform single buy/sell test with predifined pool  
   // await testWithExistingPool();
   // return;
+  await updateWSOLBalance();
 
   runNewPoolObservation(async (pool: LiquidityPoolKeysV4) => {
     await handleNewPool(pool);
+    setPoolProcessed();
   });
 };
 
