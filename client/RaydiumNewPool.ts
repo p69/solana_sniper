@@ -42,22 +42,33 @@ async function main(connection: Connection, raydium: PublicKey, onNewPair: (pool
         return;
       }
 
-      const quoteTokenBalance = await connection.getTokenAccountBalance(poolKeys.lpVault);
+      const otherTokenIsQuote = poolKeys.baseMint.toString() === WSOL.mint;
 
-      const liquitityInSol = quoteTokenBalance.value.uiAmount;
+      console.log(chalk.gray(`Pool info: ${JSON.stringify(poolKeys)}`));
+
+
+      const realCurrencyLPBalance = await connection.getTokenAccountBalance(otherTokenIsQuote ? poolKeys.baseVault : poolKeys.quoteVault);
+      //const lpVaultBalance = await connection.getTokenAccountBalance(poolKeys.lpVault);
+
+      const liquitity = realCurrencyLPBalance.value.uiAmount ?? 0;
+      console.log(chalk.bgBlue(`Real Liquidity ${realCurrencyLPBalance.value.uiAmountString ?? ''}`));
       //const liquitityInSol = lamportsToSOLNumber(info.quoteReserve);
-      if (liquitityInSol === null) {
+      const LOW_IN_USD = 2000;
+      const HIGH_IN_USD = 80000;
+      const USDC_DECIMALS = 6;
+      const isSOL = realCurrencyLPBalance.value.decimals === WSOL.decimals;
+      const SOL_EXCHANGE_RATE = 120; // 100 USD + 20%
+      const lowLimit = isSOL ? LOW_IN_USD / SOL_EXCHANGE_RATE : LOW_IN_USD;
+      const highLimit = isSOL ? HIGH_IN_USD / SOL_EXCHANGE_RATE : HIGH_IN_USD;
+      const symbol = isSOL ? 'SOL' : 'USD';
+      if (liquitity < lowLimit || liquitity >= highLimit) {
         poolIsProcessing = false;
-        console.log(`${chalk.gray('Pool found but liquiidity is undefiened. Skipping.')} ${poolKeys.id.toString()}`);
-        return;
-      } else if (liquitityInSol < 10) {
-        poolIsProcessing = false;
-        console.log(`${chalk.gray('Pool found but liquiidity is low. Skipping.')} ${liquitityInSol} SOL ${poolKeys.id.toString()}`);
+        console.log(`${chalk.gray('Liquiidity is too low or too high. Skipping.')} ${liquitity} ${symbol} ${poolKeys.id.toString()}`);
         return;
       }
 
       const RAYDIUM_OWNER_AUTHORITY = '5Q544fKrFoe6tsEbD7S8EmxGTJYAKtTVhAW5Q5pge4j1';
-      const otherTokenMint = poolKeys.baseMint.toString() === WSOL.mint ? poolKeys.quoteMint : poolKeys.baseMint;
+      const otherTokenMint = otherTokenIsQuote ? poolKeys.quoteMint : poolKeys.baseMint;
       const totalSupply = await connection.getTokenSupply(otherTokenMint);
       let totalSupplyAmount = totalSupply.value.uiAmount ?? 0;
       const largestAccounts = await connection.getTokenLargestAccounts(otherTokenMint);
@@ -85,7 +96,7 @@ async function main(connection: Connection, raydium: PublicKey, onNewPair: (pool
         return;
       }
 
-      console.log(`${chalk.yellow('New POOL:')} ${poolKeys.id.toString()}  ${liquitityInSol} SOL`);
+      console.log(`${chalk.yellow('New POOL:')} ${poolKeys.id.toString()}  ${liquitity} SOL`);
       onNewPair(poolKeys);
     } catch (e) {
       poolIsProcessing = false;
