@@ -15,7 +15,7 @@ import RaydiumSwap from './RaydiumSwap';
 const OWNER_ADDRESS = new PublicKey(process.env.WALLET_PUBLIC_KEY!);
 const BUY_AMOUNT_IN_SOL = 0.05
 const BUYING_CONDITIONS_SET: Set<GeneralTokenCondition> = new Set(['PUMPING', 'NOT_PUMPING_BUT_GROWING', 'NOT_DUMPING_BUT_DIPPING']);
-const PROFIT_IN_PERCENT = 0.50
+const PROFIT_IN_PERCENT = 1.0
 const WSOL_TOKEN = new Token(TOKEN_PROGRAM_ID, WSOL.mint, WSOL.decimals)
 const [SOL_SPL_TOKEN_ADDRESS] = PublicKey.findProgramAddressSync(
   [OWNER_ADDRESS.toBuffer(), TOKEN_PROGRAM_ID.toBuffer(), NATIVE_MINT.toBuffer()],
@@ -53,14 +53,32 @@ async function buyShitcoin(
 
   console.log(`Buying ${shitcoinToken.mint} for ${BUY_AMOUNT_IN_SOL} SOL`);
 
-  const txid = await swapTokens(
-    connection,
-    poolInfo,
-    mainTokenAccountAddress,
-    shitcoinAccountAddress,
-    wallet,
-    buyAmount
-  );
+  let txid = '';
+  try {
+    txid = await swapTokens(
+      connection,
+      poolInfo,
+      mainTokenAccountAddress,
+      shitcoinAccountAddress,
+      wallet,
+      buyAmount
+    );
+  } catch (e) {
+    console.log(chalk.red(`Failed to buy shitcoin with error ${e}. Retrying.`));
+    txid = await swapTokens(
+      connection,
+      poolInfo,
+      mainTokenAccountAddress,
+      shitcoinAccountAddress,
+      wallet,
+      buyAmount
+    );
+  }
+
+  if (txid === '') {
+    return null;
+  }
+
   const swapEndDate = new Date();
 
   console.log(`${chalk.yellow(`Confirming buying transaction. https://solscan.io/tx/${txid}`)}`);
