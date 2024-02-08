@@ -1,6 +1,6 @@
 import { Connection, PublicKey, ParsedInstruction, PartiallyDecodedInstruction } from "@solana/web3.js";
 import { formatDate, printTime } from "./Utils";
-import { Liquidity, LiquidityPoolKeys, LiquidityPoolKeysV4, Market } from "@raydium-io/raydium-sdk";
+import { Liquidity, LiquidityPoolKeys, LiquidityPoolKeysV4, Market, WSOL } from "@raydium-io/raydium-sdk";
 const RAYDIUM_PUBLIC_KEY = '675kPX9MHTjS2zt1qfr1NYHuzeLXfQM9H24wFSUt1Mp8';
 const raydium = new PublicKey(RAYDIUM_PUBLIC_KEY);
 import chalk from 'chalk';
@@ -43,6 +43,7 @@ async function main(connection: Connection, raydium: PublicKey, onNewPair: (pool
       }
 
       const quoteTokenBalance = await connection.getTokenAccountBalance(poolKeys.lpVault);
+
       const liquitityInSol = quoteTokenBalance.value.uiAmount;
       //const liquitityInSol = lamportsToSOLNumber(info.quoteReserve);
       if (liquitityInSol === null) {
@@ -52,6 +53,35 @@ async function main(connection: Connection, raydium: PublicKey, onNewPair: (pool
       } else if (liquitityInSol < 10) {
         poolIsProcessing = false;
         console.log(`${chalk.gray('Pool found but liquiidity is low. Skipping.')} ${liquitityInSol} SOL ${poolKeys.id.toString()}`);
+        return;
+      }
+
+      const RAYDIUM_OWNER_AUTHORITY = '5Q544fKrFoe6tsEbD7S8EmxGTJYAKtTVhAW5Q5pge4j1';
+      const otherTokenMint = poolKeys.baseMint.toString() === WSOL.mint ? poolKeys.quoteMint : poolKeys.baseMint;
+      const totalSupply = await connection.getTokenSupply(otherTokenMint);
+      let totalSupplyAmount = totalSupply.value.uiAmount ?? 0;
+      const largestAccounts = await connection.getTokenLargestAccounts(otherTokenMint);
+      const raydiumTokenAccount = await connection.getParsedTokenAccountsByOwner(new PublicKey(RAYDIUM_OWNER_AUTHORITY), { mint: otherTokenMint });
+
+      if (largestAccounts.value.length > 0 && raydiumTokenAccount.value.length > 0) {
+        const raydiumAccAddress = raydiumTokenAccount.value[0].pubkey.toString();
+        if (largestAccounts.value[0].address.toString() === raydiumAccAddress) {
+          // Largest holder is Raydium
+          // Checking percentage
+          const largestHoldingPercent = (largestAccounts.value[0].uiAmount ?? 0) / totalSupplyAmount;
+          if (largestHoldingPercent < 0.6) {
+            poolIsProcessing = false;
+            console.log(`${chalk.gray('Big part of supply is not in pool - ')} ${largestHoldingPercent * 100}% ${poolKeys.id.toString()}`);
+            return;
+          }
+        } else {
+          console.log(chalk.gray(`Largest holder is not raydium. Skiipping`));
+          poolIsProcessing = false;
+          return;
+        }
+      } else {
+        console.log(chalk.gray(`No token supply, most likely pool is not ready yet`));
+        poolIsProcessing = false;
         return;
       }
 
