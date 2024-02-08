@@ -1,4 +1,4 @@
-import { Fraction, Liquidity, LiquidityPoolKeysV4, Percent, Price, SOL, Token, TokenAccount, TokenAmount, WSOL } from "@raydium-io/raydium-sdk";
+import { CurrencyAmount, Fraction, Liquidity, LiquidityPoolKeysV4, Percent, Price, SOL, Token, TokenAccount, TokenAmount, WSOL } from "@raydium-io/raydium-sdk";
 import { Connection, PublicKey, Commitment, TransactionMessage, ComputeBudgetProgram, VersionedTransaction } from "@solana/web3.js";
 import {
   createAssociatedTokenAccountIdempotentInstruction
@@ -232,10 +232,98 @@ export async function waitForProfitOrTimeout(
   try {
     lastProfitToTake = await Promise.race([
       loopAndWaitForProfit(spentAmount, targetProfitPercentage, connection, amountIn, tokenOut, poolKeys, cancellationToken),
-      timeout(20 * 1000, cancellationToken) // 20 seconds
+      timeout(3 * 60 * 1000, cancellationToken) // 3 minutes
     ]);
   } catch (e) {
     console.log(`Timeout happened ${chalk.bold('Profit to take: ')} ${lastProfitToTake < 0 ? chalk.red(lastProfitToTake) : chalk.green(lastProfitToTake)}`);
   }
   console.log(`Fixing profit ${chalk.bold('Profit to take: ')} ${lastProfitToTake < 0 ? chalk.red(lastProfitToTake) : chalk.green(lastProfitToTake)}`);
+}
+
+export async function validateTradingTrendOrTimeout(
+  connection: Connection,
+  amountIn: TokenAmount,
+  tokenOut: Token,
+  poolKeys: LiquidityPoolKeysV4): Promise<GeneralTokenCondition | null> {
+  let trendingCondition: GeneralTokenCondition | null;
+  const cancellationToken = { cancelled: false }
+  try {
+    trendingCondition = await Promise.race([
+      loopAndCheckPriceTrend(connection, amountIn, tokenOut, poolKeys, cancellationToken),
+      timeout(60 * 1000, cancellationToken) // 60 seconds
+    ]);
+  } catch (e) {
+    console.log(chalk.red(`Timeout happend. Can't identify trend.`));
+    return null;
+  }
+  return trendingCondition;
+}
+
+type PriceTrend = 'UP' | 'DOWN';
+export type GeneralTokenCondition =
+  'PUMPING' | 'DUMPING' | 'NOT_PUMPING_BUT_GROWING' | 'NOT_DUMPING_BUT_DIPPING';
+
+async function loopAndCheckPriceTrend(
+  connection: Connection,
+  amountIn: TokenAmount,
+  tokenOut: Token,
+  poolKeys: LiquidityPoolKeysV4,
+  cancellationToken: { cancelled: boolean }
+): Promise<GeneralTokenCondition | null> {
+  if (cancellationToken.cancelled) {
+    return null;
+  }
+  const amountOfChecks = 5;
+  let failedAttempts = 0;
+  let prevPriceTrend: PriceTrend = 'DOWN';
+  let allChecks: { amountOut: TokenAmount | CurrencyAmount, trend: PriceTrend }[] = new Array();
+
+  for (let i = 1; i <= amountOfChecks; i++) {
+    const priceTrend = await checkPriceTrend(connection, amountIn, tokenOut, poolKeys);
+    if (cancellationToken.cancelled) {
+      return null;
+    }
+    if (priceTrend === null) {
+      failedAttempts += 1;
+    } else {
+      allChecks.push(priceTrend);
+    }
+  }
+  const lastItemsIndex = amountOfChecks - failedAttempts - 1;
+
+  if (cancellationToken.cancelled) {
+    return null;
+  }
+
+  if (failedAttempts > 2) {
+    console.log(chalk.red(`Too many fails. Can't see the trend`));
+    return null;
+  }
+
+  const upsCount = allChecks.filter((x) => x.trend === 'UP').length;
+  const downsCount = allChecks.filter((x) => x.trend === 'DOWN').length;
+
+  if (allChecks[0].amountOut.lt(allChecks[lastItemsIndex].amountOut)) { // overall growing trend
+    return (upsCount - downsCount) > 2 ? 'PUMPING' : 'NOT_PUMPING_BUT_GROWING';
+  } else { // overall dipping trend
+    return (downsCount - upsCount) > 2 ? 'DUMPING' : 'NOT_DUMPING_BUT_DIPPING';
+  }
+}
+
+async function checkPriceTrend(
+  connection: Connection,
+  amountIn: TokenAmount,
+  tokenOut: Token,
+  poolKeys: LiquidityPoolKeysV4): Promise<{ amountOut: TokenAmount | CurrencyAmount, trend: PriceTrend } | null> {
+  try {
+    const firstAttempt = await calculateAmountOut(connection, amountIn, tokenOut, poolKeys)
+    await delay(200);
+    const secodAttempt = await calculateAmountOut(connection, amountIn, tokenOut, poolKeys)
+
+    const trend = firstAttempt.amountOut.gt(secodAttempt.amountOut) ? 'DOWN' : 'UP';
+    return { amountOut: secodAttempt.amountOut, trend };
+  } catch (e) {
+    console.log(chalk.yellow('Failed to get amountOut and identify price trend.'));
+    return null;
+  }
 }

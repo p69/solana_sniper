@@ -8,13 +8,14 @@ import chalk from 'chalk';
 import { NATIVE_MINT, TOKEN_PROGRAM_ID, getAssociatedTokenAddressSync } from '@solana/spl-token';
 import { Wallet } from '@project-serum/anchor'
 import base58 from 'bs58'
-import { swapTokens, waitForProfitOrTimeout } from './Swap';
+import { GeneralTokenCondition, swapTokens, validateTradingTrendOrTimeout, waitForProfitOrTimeout } from './Swap';
 import RaydiumSwap from './RaydiumSwap';
 //import { startObserving } from "./ObserveOpenBooks";
 
 const OWNER_ADDRESS = new PublicKey(process.env.WALLET_PUBLIC_KEY!);
 const BUY_AMOUNT_IN_SOL = 0.05
-const PROFIT_IN_PERCENT = 0.10
+const BUYING_CONDITIONS_SET: Set<GeneralTokenCondition> = new Set(['PUMPING', 'NOT_PUMPING_BUT_GROWING', 'NOT_DUMPING_BUT_DIPPING']);
+const PROFIT_IN_PERCENT = 0.50
 const WSOL_TOKEN = new Token(TOKEN_PROGRAM_ID, WSOL.mint, WSOL.decimals)
 const [SOL_SPL_TOKEN_ADDRESS] = PublicKey.findProgramAddressSync(
   [OWNER_ADDRESS.toBuffer(), TOKEN_PROGRAM_ID.toBuffer(), NATIVE_MINT.toBuffer()],
@@ -28,14 +29,30 @@ const connection = new Connection(process.env.RPC_URL!, {
 const wallet = new Wallet(Keypair.fromSecretKey(base58.decode(process.env.WALLET_PRIVATE_KEY!)));
 
 async function buyShitcoin(
-  shitcoinAddress: PublicKey,
+  shitcoinToken: Token,
   shitcoinAccountAddress: PublicKey,
   poolInfo: LiquidityPoolKeysV4,
   mainTokenAccountAddress: PublicKey): Promise<number | null> {
-  console.log(`Buying ${shitcoinAddress} for ${BUY_AMOUNT_IN_SOL} SOL`);
+
   const swapStartDate = new Date();
 
   const buyAmount = new TokenAmount(WSOL_TOKEN, BUY_AMOUNT_IN_SOL, false)
+
+  console.log(chalk.yellow(`Getting trend before buying a token`));
+  const trendCondition = await validateTradingTrendOrTimeout(connection, buyAmount, shitcoinToken, poolInfo);
+  if (trendCondition === null) {
+    console.log('STOP BUYING');
+    return null;
+  }
+
+  console.log(`${chalk.yellow('Token trend: ')}${chalk.cyan(`${trendCondition}`)}`);
+  if (!BUYING_CONDITIONS_SET.has(trendCondition)) {
+    console.log(chalk.red(`${trendCondition}`) + 'is not allowed for trading. STOPPING');
+    return null;
+  }
+
+  console.log(`Buying ${shitcoinToken.mint} for ${BUY_AMOUNT_IN_SOL} SOL`);
+
   const txid = await swapTokens(
     connection,
     poolInfo,
@@ -58,7 +75,7 @@ async function buyShitcoin(
   console.log(`Buying finished. Started at ${formatDate(swapStartDate)}, finished at ${formatDate(swapEndDate)}`);
   console.log(`Getting bought tokens amount`);
 
-  const shitTokenBalance = await getNewTokenBalance(connection, txid, shitcoinAddress.toString(), wallet.publicKey.toString());
+  const shitTokenBalance = await getNewTokenBalance(connection, txid, shitcoinToken.mint.toString(), wallet.publicKey.toString());
   let snipedAmount: number | null
   if (shitTokenBalance !== undefined) {
     snipedAmount = shitTokenBalance.uiTokenAmount.uiAmount;
@@ -165,7 +182,7 @@ const swap = async (
     return;
   }
 
-  const swappedShitcoinsAmount = await buyShitcoin(tokenB.mint, tokenBAccountAddress, poolInfo, mainTokenAccount);
+  const swappedShitcoinsAmount = await buyShitcoin(tokenB, tokenBAccountAddress, poolInfo, mainTokenAccount);
   if (swappedShitcoinsAmount === null) {
     console.log(`${chalk.red('Failed')} to BUY shiitcoins. STOP sniping`);
     return;
@@ -190,8 +207,8 @@ async function updateWSOLBalance() {
 }
 
 async function testWithExistingPool() {
-  const POOL_ID = 'sxndK2DgPsbrJSW6UpuYpudrYgeUAA8yGDdy3RmzGbD';
-  const SHIT_COIN_ADDRESS = 'DUAXVeRMCn64PopKRX9vND9MwUjutv7z8gf4beVWk6nM';
+  const POOL_ID = '4doQnCB4ppx2oPfewcYrp63i7fvRN5bWb9x1XZwt6j3S';
+  const SHIT_COIN_ADDRESS = '8w63or5Dfjb24TYmzXnY3VHPsczA1pUT7SzDW3JFe6Uz';
 
   const raydiumSwap = new RaydiumSwap(connection, process.env.WALLET_PRIVATE_KEY!);
   await raydiumSwap.loadPoolKeys();
@@ -232,10 +249,13 @@ async function handleNewPool(pool: LiquidityPoolKeysV4) {
 
 let isSwapping = false;
 async function main() {
-  /// Uncomment to perform single buy/sell test with predifined pool  
+  await updateWSOLBalance();
+
+  /* Uncomment to perform single buy/sell test with predifined pool */
   // await testWithExistingPool();
   // return;
-  await updateWSOLBalance();
+  /* Uncomment to perform single buy/sell test with predifined pool */
+
 
   runNewPoolObservation(async (pool: LiquidityPoolKeysV4) => {
     await handleNewPool(pool);

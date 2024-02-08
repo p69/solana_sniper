@@ -16,8 +16,8 @@ import { swapTokens, sellTokens } from './Swap';
 import RaydiumSwap from './RaydiumSwap';
 
 const wallet = new Wallet(Keypair.fromSecretKey(base58.decode(process.env.WALLET_PRIVATE_KEY!)));
-const SHIT = '3CP4u2awmdmmtWKmSc4a5SSHYoCfbfpQHdEoYsz5YgFi';
-const SHIT_POOL_ID = '4dFWaFhpWCvFoACveHQQkC6mifP22emi6X2DK2LgFcpM';
+const SHIT = '8w63or5Dfjb24TYmzXnY3VHPsczA1pUT7SzDW3JFe6Uz';
+const SHIT_POOL_ID = '4doQnCB4ppx2oPfewcYrp63i7fvRN5bWb9x1XZwt6j3S';
 const BUY_AMOUNT_IN_SOL = 0.01 // e.g. 0.01 SOL -> B_TOKEN
 
 
