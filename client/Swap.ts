@@ -33,7 +33,7 @@ export async function swapTokens(
   );
 
   const latestBlockhash = await connection.getLatestBlockhash({
-    commitment: commitment,
+    commitment: 'finalized',
   });
   const messageV0 = new TransactionMessage({
     payerKey: signer.publicKey,
@@ -86,7 +86,7 @@ export async function sellTokens(
   );
 
   const latestBlockhash = await connection.getLatestBlockhash({
-    commitment: commitment,
+    commitment: 'finalized',
   });
   const messageV0 = new TransactionMessage({
     payerKey: signer.publicKey,
@@ -184,10 +184,12 @@ async function loopAndWaitForProfit(
   poolKeys: LiquidityPoolKeysV4,
   cancellationToken: { cancelled: boolean }
 ) {
+  const STOP_LOSS_PERCENT = -0.5
+
   let profitToTakeOrLose: number = 0;
   let prevAmountOut: number = 0;
   let priceDownCounter = 10;
-  while (priceDownCounter > 0 && profitToTakeOrLose < targetProfitPercentage) {
+  while (priceDownCounter > 0 && profitToTakeOrLose < targetProfitPercentage && profitToTakeOrLose > STOP_LOSS_PERCENT) {
     if (cancellationToken.cancelled) {
       break;
     }
