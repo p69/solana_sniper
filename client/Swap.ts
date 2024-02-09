@@ -228,13 +228,15 @@ export async function waitForProfitOrTimeout(
   connection: Connection,
   amountIn: TokenAmount,
   tokenOut: Token,
-  poolKeys: LiquidityPoolKeysV4) {
+  poolKeys: LiquidityPoolKeysV4,
+  timeutInMillis: number
+) {
   let lastProfitToTake: number = 0;
   const cancellationToken = { cancelled: false }
   try {
     lastProfitToTake = await Promise.race([
       loopAndWaitForProfit(spentAmount, targetProfitPercentage, connection, amountIn, tokenOut, poolKeys, cancellationToken),
-      timeout(3 * 60 * 1000, cancellationToken) // 3 minutes
+      timeout(timeutInMillis, cancellationToken)
     ]);
   } catch (e) {
     console.log(`Timeout happened ${chalk.bold('Profit to take: ')} ${lastProfitToTake < 0 ? chalk.red(lastProfitToTake) : chalk.green(lastProfitToTake)}`);
@@ -252,7 +254,7 @@ export async function validateTradingTrendOrTimeout(
   try {
     trendingCondition = await Promise.race([
       loopAndCheckPriceTrend(connection, amountIn, tokenOut, poolKeys, cancellationToken),
-      timeout(60 * 1000, cancellationToken) // 60 seconds
+      timeout(30 * 1000, cancellationToken) // 30 seconds
     ]);
   } catch (e) {
     console.log(chalk.red(`Timeout happend. Can't identify trend.`));

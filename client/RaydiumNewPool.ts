@@ -1,108 +1,117 @@
-import { Connection, PublicKey, ParsedInstruction, PartiallyDecodedInstruction } from "@solana/web3.js";
-import { formatDate, printTime } from "./Utils";
+import { Connection, PublicKey, ParsedTransactionWithMeta, PartiallyDecodedInstruction, Logs } from "@solana/web3.js";
+import { delay, formatDate, printTime } from "./Utils";
 import { Liquidity, LiquidityPoolKeys, LiquidityPoolKeysV4, Market, WSOL } from "@raydium-io/raydium-sdk";
 const RAYDIUM_PUBLIC_KEY = '675kPX9MHTjS2zt1qfr1NYHuzeLXfQM9H24wFSUt1Mp8';
 const raydium = new PublicKey(RAYDIUM_PUBLIC_KEY);
 import chalk from 'chalk';
 import { fetchPoolKeysForLPInitTransactionHash, findLogEntry } from "./PoolMaker";
-import { BN } from "@project-serum/anchor";
+import { checkToken } from "./SafetyCheck";
 // const connection = new Connection(process.env.RPC_URL!, {
 //   wsEndpoint: process.env.WS_URL!
 // });
 
+export type PoolWithStrategy = {
+  pool: LiquidityPoolKeysV4,
+  exitTimeoutInMillis: number,
+  targetProfit: number
+}
 
-let processedSignatures = new Set();
 
-const seenTransactions: Array<string> = [];
+const seenTransactions = new Set();
 let poolIsProcessing = false;
 
-async function main(connection: Connection, raydium: PublicKey, onNewPair: (pool: LiquidityPoolKeysV4) => void) {
+const TEST_TX = '24MoqHnHawzvfXNa6Ub7Nei2diusRekGYCCkCSuAi4FnrXFG7gEQwzdF6CxGSdnoVnbcYtF1swQyRa1P9APfH2cV'
+
+
+async function handleNewTxLog(connection: Connection, txId: string): Promise<PoolWithStrategy | null> {
+  try {
+    const date = new Date();
+    const { poolKeys, mintTransaction } = await fetchPoolKeysForLPInitTransactionHash(txId, connection); // With poolKeys you can do a swap
+    console.log(`Found new POOL at ${chalk.bgYellow(formatDate(date))}`);
+    console.log(`${poolKeys.id}`);
+    const safetyCheckResults = await checkToken(connection, mintTransaction, poolKeys)
+
+    if (safetyCheckResults === null) {
+      console.log(chalk.red(`Couldn't verify safety for pool ${poolKeys.id}. Skipping`))
+      return null
+    }
+
+    const SAFE_LOCKED_LIQUIDITY_PERCENT = 0.9
+    if (safetyCheckResults.lockedPercentOfLiqiodity < SAFE_LOCKED_LIQUIDITY_PERCENT) {
+      console.log(chalk.red(`Too much liquidity is unlocked ${1 - safetyCheckResults.lockedPercentOfLiqiodity}. RUN AWAY`))
+      return null
+    }
+
+    const info = await Liquidity.fetchInfo({ connection: connection, poolKeys: poolKeys });
+    const features = Liquidity.getEnabledFeatures(info);
+
+    if (!features.swap) {
+      console.log(`${chalk.gray(`Swapping is disabled, skipping`)}`);
+      return null
+    }
+
+    const LOW_IN_USD = 1000;
+    const HIGH_IN_USD = 100000000;
+    if (safetyCheckResults.totalLiquidity.amountInUSD < LOW_IN_USD || safetyCheckResults.totalLiquidity.amountInUSD >= HIGH_IN_USD) {
+      console.log(`${chalk.gray('Liquiidity is too low or too high. Dangerous. Skipping.')}`)
+      return null
+    }
+
+    if (!safetyCheckResults.isLargestHolderLP) {
+      console.log(`${chalk.gray('Largest wallet is not Raydium. Dangerous. Skipping.')}`)
+      return null
+    }
+
+
+    if (!safetyCheckResults.ownershipInfo.creatorHasAuthority) {
+      console.log(`${chalk.green('Safety check passed. LFG')}`)
+      return {
+        pool: poolKeys,
+        exitTimeoutInMillis: 10 * 60 * 1000, // 10 minutes time when token looks good
+        targetProfit: 3.0 // 300% to target, we must be early to 
+      }
+    } else {
+      console.log(`${chalk.yellowBright("All good with liquidity, but ownership wasn't renounced. Let's give it a try")}`)
+      return {
+        pool: poolKeys,
+        exitTimeoutInMillis: 3 * 60 * 1000, // 3 minutes time when token looks good
+        targetProfit: 0.3 // 30% to target, owner could dump all tokens
+      }
+    }
+  } catch (e) {
+    console.error(`Couldn't fetch or verify TX ${chalk.yellow(txId)}. ${e}`);
+    return null
+  }
+}
+
+async function main(connection: Connection, raydium: PublicKey, onNewPair: (pool: PoolWithStrategy) => void) {
+  /* Uncomment to test with constatnt txid */
+  await handleNewTxLog(connection, TEST_TX)
+  return
+
   console.log(`${chalk.cyan('Monitoring logs...')} ${chalk.bold(raydium.toString())}`);
 
   connection.onLogs(raydium, async (txLogs) => {
     if (poolIsProcessing) { return; }
-    if (seenTransactions.includes(txLogs.signature)) {
+    if (seenTransactions.has(txLogs.signature)) {
       return;
     }
-    seenTransactions.push(txLogs.signature);
+    seenTransactions.add(txLogs.signature);
     if (!findLogEntry('init_pc_amount', txLogs.logs)) {
       return; // If "init_pc_amount" is not in log entries then it's not LP initialization transaction
     }
+    poolIsProcessing = true
+    console.log(chalk.yellow(`Fetching mint tx - ${txLogs.signature}`))
+    let poolWithStrategy
     try {
-      poolIsProcessing = true;
-      const date = new Date();
-      const poolKeys = await fetchPoolKeysForLPInitTransactionHash(txLogs.signature, connection); // With poolKeys you can do a swap
-      console.log(`Found new POOL at ${chalk.bgYellow(formatDate(date))}`);
-      const info = await Liquidity.fetchInfo({ connection: connection, poolKeys: poolKeys });
-      const features = Liquidity.getEnabledFeatures(info);
-
-      if (!features.swap) {
-        console.log(`${chalk.gray(`Swapping is disabled, skipping`)}`);
-        poolIsProcessing = false;
-        return;
-      }
-
-      const otherTokenIsQuote = poolKeys.baseMint.toString() === WSOL.mint;
-
-      console.log(chalk.gray(`Pool info: ${JSON.stringify(poolKeys)}`));
-
-
-      const realCurrencyLPBalance = await connection.getTokenAccountBalance(otherTokenIsQuote ? poolKeys.baseVault : poolKeys.quoteVault);
-      //const lpVaultBalance = await connection.getTokenAccountBalance(poolKeys.lpVault);
-
-      const liquitity = realCurrencyLPBalance.value.uiAmount ?? 0;
-      console.log(chalk.bgBlue(`Real Liquidity ${realCurrencyLPBalance.value.uiAmountString ?? ''}`));
-      //const liquitityInSol = lamportsToSOLNumber(info.quoteReserve);
-      const LOW_IN_USD = 2000;
-      const HIGH_IN_USD = 80000;
-      const USDC_DECIMALS = 6;
-      const isSOL = realCurrencyLPBalance.value.decimals === WSOL.decimals;
-      const SOL_EXCHANGE_RATE = 120; // 100 USD + 20%
-      const lowLimit = isSOL ? LOW_IN_USD / SOL_EXCHANGE_RATE : LOW_IN_USD;
-      const highLimit = isSOL ? HIGH_IN_USD / SOL_EXCHANGE_RATE : HIGH_IN_USD;
-      const symbol = isSOL ? 'SOL' : 'USD';
-      if (liquitity < lowLimit || liquitity >= highLimit) {
-        poolIsProcessing = false;
-        console.log(`${chalk.gray('Liquiidity is too low or too high. Skipping.')} ${liquitity} ${symbol} ${poolKeys.id.toString()}`);
-        return;
-      }
-
-      const RAYDIUM_OWNER_AUTHORITY = '5Q544fKrFoe6tsEbD7S8EmxGTJYAKtTVhAW5Q5pge4j1';
-      const otherTokenMint = otherTokenIsQuote ? poolKeys.quoteMint : poolKeys.baseMint;
-      const totalSupply = await connection.getTokenSupply(otherTokenMint);
-      let totalSupplyAmount = totalSupply.value.uiAmount ?? 0;
-      const largestAccounts = await connection.getTokenLargestAccounts(otherTokenMint);
-      const raydiumTokenAccount = await connection.getParsedTokenAccountsByOwner(new PublicKey(RAYDIUM_OWNER_AUTHORITY), { mint: otherTokenMint });
-
-      if (largestAccounts.value.length > 0 && raydiumTokenAccount.value.length > 0) {
-        const raydiumAccAddress = raydiumTokenAccount.value[0].pubkey.toString();
-        if (largestAccounts.value[0].address.toString() === raydiumAccAddress) {
-          // Largest holder is Raydium
-          // Checking percentage
-          const largestHoldingPercent = (largestAccounts.value[0].uiAmount ?? 0) / totalSupplyAmount;
-          if (largestHoldingPercent < 0.6) {
-            poolIsProcessing = false;
-            console.log(`${chalk.gray('Big part of supply is not in pool - ')} ${largestHoldingPercent * 100}% ${poolKeys.id.toString()}`);
-            return;
-          }
-        } else {
-          console.log(chalk.gray(`Largest holder is not raydium. Skiipping`));
-          poolIsProcessing = false;
-          return;
-        }
-      } else {
-        console.log(chalk.gray(`No token supply, most likely pool is not ready yet`));
-        poolIsProcessing = false;
-        return;
-      }
-
-      console.log(`${chalk.yellow('New POOL:')} ${poolKeys.id.toString()}  ${liquitity} SOL`);
-      onNewPair(poolKeys);
+      poolWithStrategy = await handleNewTxLog(connection, txLogs.signature)
     } catch (e) {
-      poolIsProcessing = false;
-      console.error(`Failed to fetch TX ${chalk.yellow(txLogs.signature)}`);
+      await delay(200)
+      poolWithStrategy = await handleNewTxLog(connection, txLogs.signature)
     }
 
+    if (poolWithStrategy !== null) { onNewPair(poolWithStrategy) }
+    poolIsProcessing = false
   });
   console.log('Listening to new pools...');
 
@@ -274,7 +283,7 @@ export async function fetchPoolKeys(
 
 
 // main(connection,raydium).catch(console.error);
-export async function runNewPoolObservation(onNewPair: (pool: LiquidityPoolKeysV4) => void) {
+export async function runNewPoolObservation(onNewPair: (pool: PoolWithStrategy) => void) {
   const connection = new Connection(process.env.RPC_URL!, {
     wsEndpoint: process.env.WS_URL!
   });

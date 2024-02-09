@@ -7,6 +7,7 @@ import {
   ParsedInnerInstruction,
   ParsedInstruction
 } from "@solana/web3.js";
+import chalk from "chalk";
 
 const RAYDIUM_POOL_V4_PROGRAM_ID = '675kPX9MHTjS2zt1qfr1NYHuzeLXfQM9H24wFSUt1Mp8';
 const SERUM_OPENBOOK_PROGRAM_ID = 'srmqPvymJeFKQ4zGQed1GFppgkRHL9kaELCbyksJtPX';
@@ -23,7 +24,9 @@ export function findLogEntry(needle: string, logEntries: Array<string>): string 
   return null;
 }
 
-export async function fetchPoolKeysForLPInitTransactionHash(txSignature: string, connection: Connection): Promise<LiquidityPoolKeysV4> {
+export async function fetchPoolKeysForLPInitTransactionHash(txSignature: string, connection: Connection)
+  : Promise<{ poolKeys: LiquidityPoolKeysV4, mintTransaction: ParsedTransactionWithMeta }> {
+  console.log(chalk.yellow(`Fetching TX inf ${txSignature}`));
   const tx = await connection.getParsedTransaction(txSignature, { maxSupportedTransactionVersion: 0 });
   if (!tx) {
     throw new Error('Failed to fetch transaction with signature ' + txSignature);
@@ -31,7 +34,7 @@ export async function fetchPoolKeysForLPInitTransactionHash(txSignature: string,
   const poolInfo = parsePoolInfoFromLpTransaction(tx);
   const marketInfo = await fetchMarketInfo(poolInfo.marketId, connection);
 
-  return {
+  const keys = {
     id: poolInfo.id,
     baseMint: poolInfo.baseMint,
     quoteMint: poolInfo.quoteMint,
@@ -58,6 +61,7 @@ export async function fetchPoolKeysForLPInitTransactionHash(txSignature: string,
     marketAsks: marketInfo.asks,
     marketEventQueue: marketInfo.eventQueue,
   } as LiquidityPoolKeysV4;
+  return { mintTransaction: tx, poolKeys: keys }
 }
 
 async function fetchMarketInfo(marketId: PublicKey, connection: Connection) {

@@ -2,7 +2,7 @@ import * as dotenv from 'dotenv';
 dotenv.config();
 import { Connection, PublicKey, Keypair } from '@solana/web3.js'
 import { confirmTransaction, formatDate, getNewTokenBalance, getTokenAccounts } from './Utils';
-import { runNewPoolObservation, setPoolProcessed } from './RaydiumNewPool'
+import { runNewPoolObservation, setPoolProcessed, PoolWithStrategy } from './RaydiumNewPool'
 import { ASSOCIATED_TOKEN_PROGRAM_ID, LiquidityPoolKeys, LiquidityPoolKeysV4, SOL, Token, TokenAccount, TokenAmount, WSOL } from "@raydium-io/raydium-sdk";
 import chalk from 'chalk';
 import { NATIVE_MINT, TOKEN_PROGRAM_ID, getAssociatedTokenAddressSync } from '@solana/spl-token';
@@ -15,7 +15,6 @@ import RaydiumSwap from './RaydiumSwap';
 const OWNER_ADDRESS = new PublicKey(process.env.WALLET_PUBLIC_KEY!);
 const BUY_AMOUNT_IN_SOL = 0.05
 const BUYING_CONDITIONS_SET: Set<GeneralTokenCondition> = new Set(['PUMPING', 'NOT_PUMPING_BUT_GROWING', 'NOT_DUMPING_BUT_DIPPING']);
-const PROFIT_IN_PERCENT = 1.0
 const WSOL_TOKEN = new Token(TOKEN_PROGRAM_ID, WSOL.mint, WSOL.decimals)
 const [SOL_SPL_TOKEN_ADDRESS] = PublicKey.findProgramAddressSync(
   [OWNER_ADDRESS.toBuffer(), TOKEN_PROGRAM_ID.toBuffer(), NATIVE_MINT.toBuffer()],
@@ -112,13 +111,22 @@ async function sellShitcoin(
   amountToSell: TokenAmount,
   mainTokenAccountAddress: PublicKey,
   shitcoinAccountAddress: PublicKey,
-  poolInfo: LiquidityPoolKeysV4): Promise<number> {
+  poolWithStrategy: PoolWithStrategy): Promise<number> {
 
   console.log(`Selling ${amountToSell} shitcoins`);
 
-  console.log(`Calculating amountOut to sell with profit ${PROFIT_IN_PERCENT * 100}%`);
+  console.log(`Calculating amountOut to sell with profit ${poolWithStrategy.targetProfit * 100}%`);
 
-  await waitForProfitOrTimeout(BUY_AMOUNT_IN_SOL, PROFIT_IN_PERCENT, connection, amountToSell, WSOL_TOKEN, poolInfo);
+  const poolInfo = poolWithStrategy.pool
+
+  await waitForProfitOrTimeout(
+    BUY_AMOUNT_IN_SOL,
+    poolWithStrategy.targetProfit,
+    connection,
+    amountToSell,
+    WSOL_TOKEN,
+    poolInfo,
+    poolWithStrategy.exitTimeoutInMillis);
 
   const swapStartDate = new Date();
 
@@ -189,18 +197,12 @@ async function sellShitcoin(
 
 const swap = async (
   tokenB: Token,
-  pool: LiquidityPoolKeys,
+  poolWithStrategy: PoolWithStrategy,
   mainTokenAccount: PublicKey) => {
   const tokenBAccountAddress = getAssociatedTokenAddressSync(tokenB.mint, wallet.publicKey, false);
   const originalBalanceValue = latestWSOLBalance;
 
-  const poolInfo = pool
-  if (poolInfo === null) {
-    console.error("No Pool Info");
-    return;
-  }
-
-  const swappedShitcoinsAmount = await buyShitcoin(tokenB, tokenBAccountAddress, poolInfo, mainTokenAccount);
+  const swappedShitcoinsAmount = await buyShitcoin(tokenB, tokenBAccountAddress, poolWithStrategy.pool, mainTokenAccount);
   if (swappedShitcoinsAmount === null) {
     console.log(`${chalk.red('Failed')} to BUY shiitcoins. STOP sniping`);
     return;
@@ -208,7 +210,7 @@ const swap = async (
     console.log(`${chalk.yellow(`Got ${swappedShitcoinsAmount} tokens. Selling`)}`);
   }
   const amountToSell = new TokenAmount(tokenB, swappedShitcoinsAmount, false);
-  const afterSellSOLBalance = await sellShitcoin(amountToSell, mainTokenAccount, tokenBAccountAddress, poolInfo);
+  const afterSellSOLBalance = await sellShitcoin(amountToSell, mainTokenAccount, tokenBAccountAddress, poolWithStrategy);
   const finalSOLBalance = afterSellSOLBalance < 0 ? (originalBalanceValue - BUY_AMOUNT_IN_SOL) : afterSellSOLBalance;
   const profit = (finalSOLBalance - originalBalanceValue) / BUY_AMOUNT_IN_SOL;
   const profitInPercent = profit * 100;
@@ -232,14 +234,20 @@ async function testWithExistingPool() {
   await raydiumSwap.loadPoolKeys();
   const pool = raydiumSwap.findPoolInfoForTokens(WSOL.mint, SHIT_COIN_ADDRESS);
   if (pool !== null) {
-    handleNewPool(pool);
+    handleNewPool({
+      pool,
+      targetProfit: 0.5,
+      exitTimeoutInMillis: 1 * 60 * 1000
+    });
   }
 }
 
-async function handleNewPool(pool: LiquidityPoolKeysV4) {
+async function handleNewPool(poolWithStrategy: PoolWithStrategy) {
   if (isSwapping) {
     return;
   }
+
+  const pool = poolWithStrategy.pool
 
   console.log(`New pool ${chalk.green(pool.id.toString())}`);
   let tokenAMint = pool.baseMint.toString() === WSOL.mint ? pool.baseMint : pool.quoteMint;
@@ -256,7 +264,7 @@ async function handleNewPool(pool: LiquidityPoolKeysV4) {
   console.log("Start swapping");
   const tokenBToken = new Token(TOKEN_PROGRAM_ID, tokenBMint, tokenBDecimals)
   try {
-    await swap(tokenBToken, pool, SOL_SPL_TOKEN_ADDRESS);
+    await swap(tokenBToken, poolWithStrategy, SOL_SPL_TOKEN_ADDRESS);
   } catch (e) {
     console.log(`${chalk.red(`Swapping failed with error: ${e}`)}`)
   }
@@ -275,7 +283,7 @@ async function main() {
   /* Uncomment to perform single buy/sell test with predifined pool */
 
 
-  runNewPoolObservation(async (pool: LiquidityPoolKeysV4) => {
+  runNewPoolObservation(async (pool: PoolWithStrategy) => {
     await handleNewPool(pool);
     setPoolProcessed();
   });
