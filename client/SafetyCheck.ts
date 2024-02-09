@@ -28,7 +28,7 @@ export type SafetyCheckResult = {
   lockedPercentOfLiqiodity: number,
   creatorBalancePercent: number,
   ownershipInfo: OwnershipInfo,
-  isLargestHolderLP: boolean,
+  suspiciusLargestHolder: boolean,
 }
 
 export async function checkToken(connection: Connection, tx: ParsedTransactionWithMeta, pool: LiquidityPoolKeysV4): Promise<SafetyCheckResult | null> {
@@ -57,7 +57,7 @@ export async function checkToken(connection: Connection, tx: ParsedTransactionWi
   /// Red-flag if addresses is the same as creator's
   const otherTokenInfo = await connection.getAccountInfo(otherTokenMint)
   const mintInfo = MintLayout.decode(otherTokenInfo!.data!.subarray(0, MINT_SIZE))
-  const totalSupply = mintInfo.supply
+  const totalSupply = Number(mintInfo.supply) / (10 ** mintInfo.decimals)
   const mintAuthority = mintInfo.mintAuthorityOption > 0 ? mintInfo.mintAuthority : null
   const freezeAuthority = mintInfo.freezeAuthorityOption > 0 ? mintInfo.freezeAuthority : null
 
@@ -65,7 +65,7 @@ export async function checkToken(connection: Connection, tx: ParsedTransactionWi
   const calcOwnershipPercent = async (address: PublicKey) => {
     const tokenAcc = getAssociatedTokenAddressSync(otherTokenMint, address)
     const value = (await connection.getTokenAccountBalance(tokenAcc)).value.uiAmount ?? 0
-    return value / Number(totalSupply)
+    return value / totalSupply
   }
 
   const creatorsPercentage = await calcOwnershipPercent(creatorAddress)
@@ -128,7 +128,7 @@ export async function checkToken(connection: Connection, tx: ParsedTransactionWi
           return acc.add(currencyAmount)
         }
       }, new BN('0'))
-      const burnedInHuman = amountBurned.toNumber() / (10 ** mintInfo.decimals)
+      const burnedInHuman = amountBurned.toNumber() / (10 ** mintTxLPTokenBalance.uiTokenAmount.decimals)
       totalLPTokensBurned += burnedInHuman
     } else {
       const burnAddressInMessage = parsedWithMeta.transaction.message.accountKeys.find(x => x.pubkey.toString() === BURN_ACC_ADDRESS)
@@ -159,19 +159,23 @@ export async function checkToken(connection: Connection, tx: ParsedTransactionWi
   const largestAccounts = await connection.getTokenLargestAccounts(otherTokenMint);
   const raydiumTokenAccount = await connection.getParsedTokenAccountsByOwner(new PublicKey(RAYDIUM_OWNER_AUTHORITY), { mint: otherTokenMint });
 
-  let largestHolderIsRaydiium = false
+  let suspiciusLargestHolder = false
   if (largestAccounts.value.length > 0 && raydiumTokenAccount.value.length > 0) {
-    const raydiumAccAddress = raydiumTokenAccount.value[0].pubkey.toString();
-    if (largestAccounts.value[0].address.toString() === raydiumAccAddress) {
-      // Largest holder is Raydium
-      largestHolderIsRaydiium = true
+    const top1 = largestAccounts.value[0]
+    const top1Percent = (top1.uiAmount ?? 0) / totalSupply
+    if (top1Percent > 0.5) {
+      const raydiumAccAddress = raydiumTokenAccount.value[0].pubkey.toString();
+      if (largestAccounts.value[0].toString() !== raydiumAccAddress) {
+        // Largest holder (>50%) is not Raydium, suspicius
+        suspiciusLargestHolder = true
+      }
     }
   }
 
   return {
     creator: creatorAddress,
     lockedPercentOfLiqiodity: percentLockedLP,
-    isLargestHolderLP: largestHolderIsRaydiium,
+    suspiciusLargestHolder,
     totalLiquidity: {
       amount: liquitity,
       amountInUSD,

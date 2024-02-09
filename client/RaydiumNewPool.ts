@@ -20,7 +20,7 @@ export type PoolWithStrategy = {
 const seenTransactions = new Set();
 let poolIsProcessing = false;
 
-const TEST_TX = '24MoqHnHawzvfXNa6Ub7Nei2diusRekGYCCkCSuAi4FnrXFG7gEQwzdF6CxGSdnoVnbcYtF1swQyRa1P9APfH2cV'
+const TEST_TX = '4EZJKpqCqVufrqqpKMZV2ATcJXoY7P8o47Dgw3ZkndPsojzy8EFG2stiJcgYDT9skCUcG4Jrr2kmAnskR1FcMTFh'
 
 
 async function handleNewTxLog(connection: Connection, txId: string): Promise<PoolWithStrategy | null> {
@@ -57,8 +57,8 @@ async function handleNewTxLog(connection: Connection, txId: string): Promise<Poo
       return null
     }
 
-    if (!safetyCheckResults.isLargestHolderLP) {
-      console.log(`${chalk.gray('Largest wallet is not Raydium. Dangerous. Skipping.')}`)
+    if (safetyCheckResults.suspiciusLargestHolder) {
+      console.log(`${chalk.gray('Huge wallet is not Raydium. Dangerous. Skipping.')}`)
       return null
     }
 
@@ -86,8 +86,8 @@ async function handleNewTxLog(connection: Connection, txId: string): Promise<Poo
 
 async function main(connection: Connection, raydium: PublicKey, onNewPair: (pool: PoolWithStrategy) => void) {
   /* Uncomment to test with constatnt txid */
-  await handleNewTxLog(connection, TEST_TX)
-  return
+  // await handleNewTxLog(connection, TEST_TX)
+  // return
 
   console.log(`${chalk.cyan('Monitoring logs...')} ${chalk.bold(raydium.toString())}`);
 
