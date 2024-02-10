@@ -139,8 +139,8 @@ async function handleNewTxLog(connection: Connection, txId: string): Promise<Poo
 
 async function main(connection: Connection, raydium: PublicKey, onNewPair: (pool: PoolWithStrategy) => void) {
   /* Uncomment to test with constatnt txid */
-  await handleNewTxLog(connection, TEST_TX)
-  return
+  // await handleNewTxLog(connection, TEST_TX)
+  // return
 
   console.log(`${chalk.cyan('Monitoring logs...')} ${chalk.bold(raydium.toString())}`);
 
