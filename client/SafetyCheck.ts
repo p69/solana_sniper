@@ -5,6 +5,7 @@ import { BURN_ACC_ADDRESS } from './Addresses'
 import { KNOWN_SCAM_ACCOUNTS } from './BlackLists'
 import { BN } from "@project-serum/anchor";
 import chalk from 'chalk'
+import { delay } from './Utils'
 
 const BURN_INSTRUCTION_LOG = "Program log: Instruction: Burn"
 const RAYDIUM_OWNER_AUTHORITY = '5Q544fKrFoe6tsEbD7S8EmxGTJYAKtTVhAW5Q5pge4j1';
@@ -12,7 +13,7 @@ const RAYDIUM_OWNER_AUTHORITY = '5Q544fKrFoe6tsEbD7S8EmxGTJYAKtTVhAW5Q5pge4j1';
 type OwnershipInfo = {
   mintAuthority: string | null,
   freezeAuthority: string | null,
-  creatorHasAuthority: boolean,
+  isMintable: boolean,
   authorityBalancePercent: number
 }
 
@@ -26,9 +27,8 @@ export type SafetyCheckResult = {
   creator: PublicKey,
   totalLiquidity: LiquidityValue,
   lockedPercentOfLiqiodity: number,
-  creatorBalancePercent: number,
+  newTokenPoolBalancePercent: number,
   ownershipInfo: OwnershipInfo,
-  suspiciusLargestHolder: boolean,
 }
 
 export async function checkToken(connection: Connection, tx: ParsedTransactionWithMeta, pool: LiquidityPoolKeysV4): Promise<SafetyCheckResult | null> {
@@ -98,48 +98,15 @@ export async function checkToken(connection: Connection, tx: ParsedTransactionWi
   const mintTxLPTokenBalance = tx.meta.postTokenBalances.find(x => x.mint === lpTokenMint)!
 
   const lpTokenAccount = getAssociatedTokenAddressSync(new PublicKey(lpTokenMint), creatorAddress)
-  const lpTokenAccountTxIds = await connection.getConfirmedSignaturesForAddress2(lpTokenAccount)
-  const lpTokenAccountTxs = await connection
-    .getParsedTransactions(
-      lpTokenAccountTxIds.map(x => x.signature),
-      { maxSupportedTransactionVersion: 0 })
 
-  const filteredLPTokenAccountTxs = lpTokenAccountTxs.filter(x => x && x.meta && !x.meta.err)
-
-
-  /// Check for either BURN instruction
-  /// Transferring to burn address
-  let totalLPTokensBurned: number = 0
-  for (let i = 0; i < filteredLPTokenAccountTxs.length; i++) {
-    const parsedWithMeta = filteredLPTokenAccountTxs[i]
-    if (!parsedWithMeta || !parsedWithMeta.meta) { continue }
-    const preLPTokenBalance = parsedWithMeta.meta.preTokenBalances?.find(x => x.mint === lpTokenMint)
-    const postLPTokenBalance = parsedWithMeta.meta.postTokenBalances?.find(x => x.mint === lpTokenMint)
-    const burnInstructions = parsedWithMeta.transaction
-      .message.instructions
-      .map((x: any) => x.parsed)
-      .filter(x => x && x.type === 'burn' && x.info.mint === lpTokenMint)
-
-    if (burnInstructions && burnInstructions.length > 0) {
-      const amountBurned: BN = burnInstructions.reduce((acc: BN, x) => {
-        const amount = x.info?.amount
-        if (amount) {
-          const currencyAmount = new BN(amount)
-          return acc.add(currencyAmount)
-        }
-      }, new BN('0'))
-      const burnedInHuman = amountBurned.toNumber() / (10 ** mintTxLPTokenBalance.uiTokenAmount.decimals)
-      totalLPTokensBurned += burnedInHuman
-    } else {
-      const burnAddressInMessage = parsedWithMeta.transaction.message.accountKeys.find(x => x.pubkey.toString() === BURN_ACC_ADDRESS)
-      if (burnAddressInMessage) {
-        totalLPTokensBurned += (preLPTokenBalance?.uiTokenAmount.uiAmount ?? 0) - (postLPTokenBalance?.uiTokenAmount.uiAmount ?? 0)
-      }
-    }
-  }
-
-  const percentLockedLP = totalLPTokensBurned / (mintTxLPTokenBalance.uiTokenAmount.uiAmount ?? 1)
-
+  const percentLockedLP = await getPercentOfBurnedTokensWithRetry(
+    4, /// 4 attempts
+    30 * 1000, /// wait for 30 seconds before next retry
+    connection,
+    lpTokenAccount,
+    lpTokenMint,
+    mintTxLPTokenBalance
+  )
 
   /// Get real liquiidity value
   const realCurrencyLPBalance = await connection.getTokenAccountBalance(baseIsWSOL ? pool.baseVault : pool.quoteVault);
@@ -159,33 +126,28 @@ export async function checkToken(connection: Connection, tx: ParsedTransactionWi
   const largestAccounts = await connection.getTokenLargestAccounts(otherTokenMint);
   const raydiumTokenAccount = await connection.getParsedTokenAccountsByOwner(new PublicKey(RAYDIUM_OWNER_AUTHORITY), { mint: otherTokenMint });
 
-  let suspiciusLargestHolder = false
+  let newTokenPoolBalancePercent = 0
   if (largestAccounts.value.length > 0 && raydiumTokenAccount.value.length > 0) {
-    const top1 = largestAccounts.value[0]
-    const top1Percent = (top1.uiAmount ?? 0) / totalSupply
-    if (top1Percent > 0.5) {
-      const raydiumAccAddress = raydiumTokenAccount.value[0].pubkey.toString();
-      if (largestAccounts.value[0].toString() !== raydiumAccAddress) {
-        // Largest holder (>50%) is not Raydium, suspicius
-        suspiciusLargestHolder = true
-      }
+    const poolAcc = raydiumTokenAccount.value[0].pubkey.toString()
+    const poolBalance = largestAccounts.value.find(x => x.address.toString() === poolAcc)
+    if (poolBalance) {
+      newTokenPoolBalancePercent = (poolBalance.uiAmount ?? 0) / totalSupply
     }
   }
 
   return {
     creator: creatorAddress,
     lockedPercentOfLiqiodity: percentLockedLP,
-    suspiciusLargestHolder,
     totalLiquidity: {
       amount: liquitity,
       amountInUSD,
       symbol
     },
-    creatorBalancePercent: creatorsPercentage,
+    newTokenPoolBalancePercent,
     ownershipInfo: {
       mintAuthority: mintAuthority?.toString() ?? null,
       freezeAuthority: freezeAuthority?.toString() ?? null,
-      creatorHasAuthority: (creatorAddress.toString() === mintAuthority?.toString() || creatorAddress.toString() === freezeAuthority?.toString()),
+      isMintable: !mintAuthority,
       authorityBalancePercent: authorityPercentage
     }
   }
@@ -197,4 +159,82 @@ function reduceBalancesToTokensSet(balances: TokenBalance[]): Set<string> {
     set.add(b.mint)
     return set
   }, result)
+}
+
+async function getPercentOfBurnedTokensWithRetry(
+  attempts: number,
+  waitBeforeAttempt: number,
+  connection: Connection,
+  lpTokenAccount: PublicKey,
+  lpTokenMint: string,
+  mintTxLPTokenBalance: TokenBalance,
+): Promise<number> {
+  let attempt = 1
+  while (attempt <= attempts) {
+    try {
+      const burnedPercent = await getPercentOfBurnedTokens(connection, lpTokenAccount, lpTokenMint, mintTxLPTokenBalance)
+      if (burnedPercent >= 1) {
+        return burnedPercent
+      }
+      attempt += 1
+      if (attempt > attempts) { return 0 }
+      await delay(200 + waitBeforeAttempt)
+    } catch (e) {
+      console.log(chalk.red(`Failed to get amount of burned LP tokens: ${e}.`))
+      attempt += 1
+      if (attempt > attempts) { return 0 }
+      await delay(200 + waitBeforeAttempt)
+    }
+  }
+  return 0
+}
+
+const BURN_INSTRCUTIONS = new Set(['burnChecked', 'burn'])
+
+async function getPercentOfBurnedTokens(
+  connection: Connection,
+  lpTokenAccount: PublicKey,
+  lpTokenMint: string,
+  mintTxLPTokenBalance: TokenBalance,
+): Promise<number> {
+  const lpTokenAccountTxIds = await connection.getConfirmedSignaturesForAddress2(lpTokenAccount)
+  const lpTokenAccountTxs = await connection
+    .getParsedTransactions(
+      lpTokenAccountTxIds.map(x => x.signature),
+      { maxSupportedTransactionVersion: 0 })
+
+  const filteredLPTokenAccountTxs = lpTokenAccountTxs.filter(x => x && x.meta && !x.meta.err)
+
+  /// Check for either BURN instruction
+  /// Transferring to burn address
+  let totalLPTokensBurned: number = 0
+  for (let i = 0; i < filteredLPTokenAccountTxs.length; i++) {
+    const parsedWithMeta = filteredLPTokenAccountTxs[i]
+    if (!parsedWithMeta || !parsedWithMeta.meta) { continue }
+    const preLPTokenBalance = parsedWithMeta.meta.preTokenBalances?.find(x => x.mint === lpTokenMint)
+    const postLPTokenBalance = parsedWithMeta.meta.postTokenBalances?.find(x => x.mint === lpTokenMint)
+    const burnInstructions = parsedWithMeta.transaction
+      .message.instructions
+      .map((x: any) => x.parsed)
+      .filter(x => x && BURN_INSTRCUTIONS.has(x.type) && x.info.mint === lpTokenMint)
+
+    if (burnInstructions && burnInstructions.length > 0) {
+      const amountBurned: BN = burnInstructions.reduce((acc: BN, x) => {
+        const amount = x.info?.amount ?? x.info?.tokenAmount?.amount
+        if (amount) {
+          const currencyAmount = new BN(amount)
+          return acc.add(currencyAmount)
+        }
+      }, new BN('0'))
+      const burnedInHuman = amountBurned.toNumber() / (10 ** mintTxLPTokenBalance.uiTokenAmount.decimals)
+      totalLPTokensBurned += burnedInHuman
+    } else {
+      const burnAddressInMessage = parsedWithMeta.transaction.message.accountKeys.find(x => x.pubkey.toString() === BURN_ACC_ADDRESS)
+      if (burnAddressInMessage) {
+        totalLPTokensBurned += (preLPTokenBalance?.uiTokenAmount.uiAmount ?? 0) - (postLPTokenBalance?.uiTokenAmount.uiAmount ?? 0)
+      }
+    }
+  }
+
+  return totalLPTokensBurned / (mintTxLPTokenBalance.uiTokenAmount.uiAmount ?? 1)
 }

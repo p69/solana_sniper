@@ -13,7 +13,7 @@ import RaydiumSwap from './RaydiumSwap';
 //import { startObserving } from "./ObserveOpenBooks";
 
 const OWNER_ADDRESS = new PublicKey(process.env.WALLET_PUBLIC_KEY!);
-const BUY_AMOUNT_IN_SOL = 0.05
+const BUY_AMOUNT_IN_SOL = 0.1
 const BUYING_CONDITIONS_SET: Set<GeneralTokenCondition> = new Set(['PUMPING', 'NOT_PUMPING_BUT_GROWING', 'NOT_DUMPING_BUT_DIPPING']);
 const WSOL_TOKEN = new Token(TOKEN_PROGRAM_ID, WSOL.mint, WSOL.decimals)
 const [SOL_SPL_TOKEN_ADDRESS] = PublicKey.findProgramAddressSync(

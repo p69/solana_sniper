@@ -16,11 +16,21 @@ export type PoolWithStrategy = {
   targetProfit: number
 }
 
+const SAFE_TRADING_STRATEGY = {
+  exitTimeoutInMillis: 10 * 60 * 1000, // 10 minutes time when token looks good
+  targetProfit: 3.0 // 300% to target, we must be early to 
+}
+
+const DANGEROUS_TRADING_STRATEGY = {
+  exitTimeoutInMillis: 1 * 60 * 1000, // 1 minutes time when token looks good
+  targetProfit: 0.1 // 10% to target, owner could dump all tokens
+}
+
 
 const seenTransactions = new Set();
 let poolIsProcessing = false;
 
-const TEST_TX = '4EZJKpqCqVufrqqpKMZV2ATcJXoY7P8o47Dgw3ZkndPsojzy8EFG2stiJcgYDT9skCUcG4Jrr2kmAnskR1FcMTFh'
+const TEST_TX = '3sxTntypbwdFsasJyURGg7vAwtwnFEB3jgwDiUfsQAdmguzgDdyvz5Ryj59b4irPmnY5BWy4gv98mphFKNGQxNLa'
 
 
 async function handleNewTxLog(connection: Connection, txId: string): Promise<PoolWithStrategy | null> {
@@ -36,46 +46,89 @@ async function handleNewTxLog(connection: Connection, txId: string): Promise<Poo
       return null
     }
 
-    const SAFE_LOCKED_LIQUIDITY_PERCENT = 0.9
-    if (safetyCheckResults.lockedPercentOfLiqiodity < SAFE_LOCKED_LIQUIDITY_PERCENT) {
-      console.log(chalk.red(`Too much liquidity is unlocked ${1 - safetyCheckResults.lockedPercentOfLiqiodity}. RUN AWAY`))
-      return null
-    }
+    console.log(chalk.cyan(JSON.stringify(safetyCheckResults, null, 2)))
 
     const info = await Liquidity.fetchInfo({ connection: connection, poolKeys: poolKeys });
     const features = Liquidity.getEnabledFeatures(info);
 
     if (!features.swap) {
+      console.log(chalk.cyan(JSON.stringify(info, null, 2)))
       console.log(`${chalk.gray(`Swapping is disabled, skipping`)}`);
       return null
     }
 
+    const SAFE_LOCKED_LIQUIDITY_PERCENT = 0.9
+    const MIN_PERCENT_NEW_TOKEN_INPOOL = 0.8
     const LOW_IN_USD = 1000;
     const HIGH_IN_USD = 100000000;
-    if (safetyCheckResults.totalLiquidity.amountInUSD < LOW_IN_USD || safetyCheckResults.totalLiquidity.amountInUSD >= HIGH_IN_USD) {
+
+    /// Check is liquidiity amount is too low r otoo high (both are suspicous)
+    if (safetyCheckResults.totalLiquidity.amountInUSD < LOW_IN_USD || safetyCheckResults.totalLiquidity.amountInUSD > HIGH_IN_USD) {
       console.log(`${chalk.gray('Liquiidity is too low or too high. Dangerous. Skipping.')}`)
       return null
     }
 
-    if (safetyCheckResults.suspiciusLargestHolder) {
-      console.log(`${chalk.gray('Huge wallet is not Raydium. Dangerous. Skipping.')}`)
+    if (safetyCheckResults.lockedPercentOfLiqiodity < SAFE_LOCKED_LIQUIDITY_PERCENT) {
+      /// If locked percent of liquidity is less then SAFE_LOCKED_LIQUIDITY_PERCENT
+      /// most likely it will be rugged at any time, better to stay away
+      console.log(`${chalk.gray('Large percent of liquidity is unlocked. Dangerous. Skipping.')}`)
       return null
     }
 
-
-    if (!safetyCheckResults.ownershipInfo.creatorHasAuthority) {
-      console.log(`${chalk.green('Safety check passed. LFG')}`)
-      return {
-        pool: poolKeys,
-        exitTimeoutInMillis: 10 * 60 * 1000, // 10 minutes time when token looks good
-        targetProfit: 3.0 // 300% to target, we must be early to 
+    /// When token is mintable but almost 100% LP is locked
+    if (safetyCheckResults.lockedPercentOfLiqiodity >= 0.99) {
+      /// Check percent in pool
+      if (safetyCheckResults.newTokenPoolBalancePercent >= 0.99) {
+        /// When almost all tokens in pool 
+        if (safetyCheckResults.ownershipInfo.isMintable) {
+          /// When token is still mintable
+          /// We can try to get some money out of it
+          console.log(`${chalk.gray('Some amount of LP is locked, but token is mintable. Try with less profit target')}`)
+          return {
+            pool: poolKeys,
+            ...DANGEROUS_TRADING_STRATEGY
+          }
+        } else {
+          /// When token is not mintable
+          console.log(`${chalk.green('Safety check passed. LFG')}`)
+          return {
+            pool: poolKeys,
+            ...SAFE_TRADING_STRATEGY
+          }
+        }
+      } else if (safetyCheckResults.newTokenPoolBalancePercent >= MIN_PERCENT_NEW_TOKEN_INPOOL) {
+        /// When at least MIN_PERCENT_NEW_TOKEN_INPOOL tokens in pool 
+        if (!safetyCheckResults.ownershipInfo.isMintable) {
+          /// If token is not mintable
+          console.log(`${chalk.gray('Some tokens are not in pool, but token is not mintable. Try with less profit target')}`)
+          return {
+            pool: poolKeys,
+            ...DANGEROUS_TRADING_STRATEGY
+          }
+        } else {
+          /// If token is mintable
+          console.log(`${chalk.gray('Some tokens are not in pool and token is mintable. Could be dumped very fast. Stay away')}`)
+          return null
+        }
+      } else {
+        /// When too much new tokens is not in pool
+        console.log(`${chalk.gray('Too much new tokens is not in pool. Could be dumped very fast. Stay away')}`)
+        return null
       }
-    } else {
-      console.log(`${chalk.yellowBright("All good with liquidity, but ownership wasn't renounced. Let's give it a try")}`)
-      return {
-        pool: poolKeys,
-        exitTimeoutInMillis: 3 * 60 * 1000, // 3 minutes time when token looks good
-        targetProfit: 0.3 // 30% to target, owner could dump all tokens
+    } else { /// When 10% or less is unlocked
+      /// When token is not mintable
+      if (!safetyCheckResults.ownershipInfo.isMintable) {
+        /// We can try to get some money out of it
+        console.log(`${chalk.gray('10% or less of LP is unlocked and token is not mintable. Try with less profit target')}`)
+        return {
+          pool: poolKeys,
+          ...DANGEROUS_TRADING_STRATEGY
+        }
+      } else {
+        /// When token is mintable
+        /// Better to stay away
+        console.log(`${chalk.gray('10% or less of LP is unlocked and token is mintable. Stay away.')}`)
+        return null
       }
     }
   } catch (e) {
@@ -86,8 +139,8 @@ async function handleNewTxLog(connection: Connection, txId: string): Promise<Poo
 
 async function main(connection: Connection, raydium: PublicKey, onNewPair: (pool: PoolWithStrategy) => void) {
   /* Uncomment to test with constatnt txid */
-  // await handleNewTxLog(connection, TEST_TX)
-  // return
+  await handleNewTxLog(connection, TEST_TX)
+  return
 
   console.log(`${chalk.cyan('Monitoring logs...')} ${chalk.bold(raydium.toString())}`);
 
