@@ -99,14 +99,20 @@ export async function checkToken(connection: Connection, tx: ParsedTransactionWi
 
   const lpTokenAccount = getAssociatedTokenAddressSync(new PublicKey(lpTokenMint), creatorAddress)
 
-  const percentLockedLP = await getPercentOfBurnedTokensWithRetry(
-    4, /// 4 attempts
-    30 * 1000, /// wait for 30 seconds before next retry
-    connection,
-    lpTokenAccount,
-    lpTokenMint,
-    mintTxLPTokenBalance
-  )
+  let percentLockedLP: number
+
+  if ((mintTxLPTokenBalance.uiTokenAmount.uiAmount ?? 0) <= 1) {
+    percentLockedLP = 1
+  } else {
+    percentLockedLP = await getPercentOfBurnedTokensWithRetry(
+      4, /// 4 attempts
+      30 * 1000, /// wait for 30 seconds before next retry
+      connection,
+      lpTokenAccount,
+      lpTokenMint,
+      mintTxLPTokenBalance
+    )
+  }
 
   /// Get real liquiidity value
   const realCurrencyLPBalance = await connection.getTokenAccountBalance(baseIsWSOL ? pool.baseVault : pool.quoteVault);
@@ -147,7 +153,7 @@ export async function checkToken(connection: Connection, tx: ParsedTransactionWi
     ownershipInfo: {
       mintAuthority: mintAuthority?.toString() ?? null,
       freezeAuthority: freezeAuthority?.toString() ?? null,
-      isMintable: !mintAuthority,
+      isMintable: mintAuthority !== null,
       authorityBalancePercent: authorityPercentage
     }
   }
