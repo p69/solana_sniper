@@ -17,8 +17,8 @@ export type PoolWithStrategy = {
 }
 
 const SAFE_TRADING_STRATEGY = {
-  exitTimeoutInMillis: 10 * 60 * 1000, // 10 minutes time when token looks good
-  targetProfit: 3.0 // 300% to target, we must be early to 
+  exitTimeoutInMillis: 30 * 60 * 1000, // 10 minutes time when token looks good
+  targetProfit: 5.0 // 500% to target, we must be early to 
 }
 
 const DANGEROUS_TRADING_STRATEGY = {
@@ -30,7 +30,7 @@ const DANGEROUS_TRADING_STRATEGY = {
 const seenTransactions = new Set();
 let poolIsProcessing = false;
 
-const TEST_TX = '3sxTntypbwdFsasJyURGg7vAwtwnFEB3jgwDiUfsQAdmguzgDdyvz5Ryj59b4irPmnY5BWy4gv98mphFKNGQxNLa'
+const TEST_TX = '3Q7XZBGoqMVz5v6Kt9DMUhjSwVdQZaJsxajC5dA46gQryTM27XXCnVmKjmkXvpSSxxdKBCBw1AjNTfESMgGmqCzx'
 
 
 async function handleNewTxLog(connection: Connection, txId: string): Promise<PoolWithStrategy | null> {
@@ -39,6 +39,17 @@ async function handleNewTxLog(connection: Connection, txId: string): Promise<Poo
     const { poolKeys, mintTransaction } = await fetchPoolKeysForLPInitTransactionHash(txId, connection); // With poolKeys you can do a swap
     console.log(`Found new POOL at ${chalk.bgYellow(formatDate(date))}`);
     console.log(`${poolKeys.id}`);
+
+    const info = await Liquidity.fetchInfo({ connection: connection, poolKeys: poolKeys });
+    console.log(chalk.cyan(JSON.stringify(info, null, 2)))
+    const features = Liquidity.getEnabledFeatures(info);
+    console.log(chalk.cyan(JSON.stringify(features, null, 2)))
+
+    if (!features.swap) {
+      console.log(`${chalk.gray(`Swapping is disabled, skipping`)}`);
+      return null
+    }
+
     const safetyCheckResults = await checkToken(connection, mintTransaction, poolKeys)
 
     if (safetyCheckResults === null) {
@@ -47,15 +58,6 @@ async function handleNewTxLog(connection: Connection, txId: string): Promise<Poo
     }
 
     console.log(chalk.cyan(JSON.stringify(safetyCheckResults, null, 2)))
-
-    const info = await Liquidity.fetchInfo({ connection: connection, poolKeys: poolKeys });
-    const features = Liquidity.getEnabledFeatures(info);
-
-    if (!features.swap) {
-      console.log(chalk.cyan(JSON.stringify(info, null, 2)))
-      console.log(`${chalk.gray(`Swapping is disabled, skipping`)}`);
-      return null
-    }
 
     const SAFE_LOCKED_LIQUIDITY_PERCENT = 0.9
     const MIN_PERCENT_NEW_TOKEN_INPOOL = 0.8
@@ -100,6 +102,13 @@ async function handleNewTxLog(connection: Connection, txId: string): Promise<Poo
         /// When at least MIN_PERCENT_NEW_TOKEN_INPOOL tokens in pool 
         if (!safetyCheckResults.ownershipInfo.isMintable) {
           /// If token is not mintable
+          console.log(`${chalk.gray('Some tokens are not in pool, but token is not mintable. Try with less profit target')}`)
+          return {
+            pool: poolKeys,
+            ...DANGEROUS_TRADING_STRATEGY
+          }
+        } if (safetyCheckResults.newTokenPoolBalancePercent >= 0.95) {
+          /// If token is mintable, but should not be dumped fast (from my experience)
           console.log(`${chalk.gray('Some tokens are not in pool, but token is not mintable. Try with less profit target')}`)
           return {
             pool: poolKeys,
