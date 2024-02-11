@@ -8,6 +8,7 @@ import {
   ParsedInstruction
 } from "@solana/web3.js";
 import chalk from "chalk";
+import { delay } from "./Utils";
 
 const RAYDIUM_POOL_V4_PROGRAM_ID = '675kPX9MHTjS2zt1qfr1NYHuzeLXfQM9H24wFSUt1Mp8';
 const SERUM_OPENBOOK_PROGRAM_ID = 'srmqPvymJeFKQ4zGQed1GFppgkRHL9kaELCbyksJtPX';
@@ -27,7 +28,7 @@ export function findLogEntry(needle: string, logEntries: Array<string>): string 
 export async function fetchPoolKeysForLPInitTransactionHash(txSignature: string, connection: Connection)
   : Promise<{ poolKeys: LiquidityPoolKeysV4, mintTransaction: ParsedTransactionWithMeta }> {
   console.log(chalk.yellow(`Fetching TX inf ${txSignature}`));
-  const tx = await connection.getParsedTransaction(txSignature, { maxSupportedTransactionVersion: 0 });
+  const tx = await retryGetParsedTransaction(connection, txSignature, 5)
   if (!tx) {
     throw new Error('Failed to fetch transaction with signature ' + txSignature);
   }
@@ -62,6 +63,37 @@ export async function fetchPoolKeysForLPInitTransactionHash(txSignature: string,
     marketEventQueue: marketInfo.eventQueue,
   } as LiquidityPoolKeysV4;
   return { mintTransaction: tx, poolKeys: keys }
+}
+
+async function retryGetParsedTransaction(
+  connection: Connection,
+  txSignature: string,
+  maxAttempts: number,
+  delayMs: number = 200,
+  attempt: number = 1
+): Promise<ParsedTransactionWithMeta | null> {
+  try {
+    const tx = await connection.getParsedTransaction(txSignature, { maxSupportedTransactionVersion: 0 });
+    if (tx !== null) {
+      return tx; // Return the transaction if it's not null
+    } else if (attempt < maxAttempts) {
+      console.log(`Attempt ${attempt} failed, retrying...`);
+      await delay(delayMs) // Wait for the specified delay
+      return retryGetParsedTransaction(connection, txSignature, maxAttempts, delayMs, attempt + 1);
+    } else {
+      console.log('Max attempts reached, returning null');
+      return null; // Return null if max attempts are reached
+    }
+  } catch (error) {
+    console.error(`Attempt ${attempt} failed with error: ${error}, retrying...`);
+    if (attempt < maxAttempts) {
+      await delay(delayMs) // Wait for the specified delay // Wait for the specified delay before retrying
+      return retryGetParsedTransaction(connection, txSignature, maxAttempts, delayMs, attempt + 1);
+    } else {
+      console.log('Max attempts reached, returning null');
+      return null; // Return null if max attempts are reached
+    }
+  }
 }
 
 async function fetchMarketInfo(marketId: PublicKey, connection: Connection) {
