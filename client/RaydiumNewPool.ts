@@ -18,12 +18,12 @@ export type PoolWithStrategy = {
 
 const SAFE_TRADING_STRATEGY = {
   exitTimeoutInMillis: 30 * 60 * 1000, // 10 minutes time when token looks good
-  targetProfit: 5.0 // 500% to target, we must be early to 
+  targetProfit: 4.9 // 500% to target, we must be early to 
 }
 
 const DANGEROUS_TRADING_STRATEGY = {
   exitTimeoutInMillis: 1 * 60 * 1000, // 1 minutes time when token looks good
-  targetProfit: 0.1 // 10% to target, owner could dump all tokens
+  targetProfit: 0.09 // make 9% to target 10% in more secure way. owner could dump all tokens
 }
 
 
