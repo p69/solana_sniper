@@ -1,13 +1,13 @@
-import { ParsedTransactionWithMeta, PublicKey, Connection, ParsedAccountData, TokenBalance } from '@solana/web3.js'
-import { Currency, CurrencyAmount, LiquidityPoolKeysV4, Token, TokenAmount, WSOL } from '@raydium-io/raydium-sdk'
+import { ParsedTransactionWithMeta, PublicKey, Connection, TokenBalance } from '@solana/web3.js'
+import { LiquidityPoolKeysV4, WSOL } from '@raydium-io/raydium-sdk'
 import { getAssociatedTokenAddressSync, MINT_SIZE, MintLayout } from '@solana/spl-token'
-import { BURN_ACC_ADDRESS } from './PoolValidator/Addresses'
-import { KNOWN_SCAM_ACCOUNTS } from './PoolValidator/BlackLists'
+import { BURN_ACC_ADDRESS } from './Addresses'
+import { KNOWN_SCAM_ACCOUNTS } from './BlackLists'
 import { BN } from "@project-serum/anchor";
 import chalk from 'chalk'
-import { delay } from './Utils'
+import { delay } from '../Utils'
+import { connection } from './Connection'
 
-const BURN_INSTRUCTION_LOG = "Program log: Instruction: Burn"
 const RAYDIUM_OWNER_AUTHORITY = '5Q544fKrFoe6tsEbD7S8EmxGTJYAKtTVhAW5Q5pge4j1';
 
 type OwnershipInfo = {
@@ -31,7 +31,7 @@ export type SafetyCheckResult = {
   ownershipInfo: OwnershipInfo,
 }
 
-export async function checkToken(connection: Connection, tx: ParsedTransactionWithMeta, pool: LiquidityPoolKeysV4): Promise<SafetyCheckResult | null> {
+export async function checkToken(tx: ParsedTransactionWithMeta, pool: LiquidityPoolKeysV4): Promise<SafetyCheckResult | null> {
   if (!tx.meta || !tx.meta.innerInstructions || !tx.meta.preTokenBalances || !tx.meta.postTokenBalances) {
     console.log(`meta is null ${tx.meta === null}`)
     console.log(`innerInstructions is null ${tx.meta?.innerInstructions === null || tx.meta?.innerInstructions === undefined}`)
@@ -105,9 +105,8 @@ export async function checkToken(connection: Connection, tx: ParsedTransactionWi
     percentLockedLP = 1
   } else {
     percentLockedLP = await getPercentOfBurnedTokensWithRetry(
-      4, /// 4 attempts
+      11, /// 4 attempts
       30 * 1000, /// wait for 30 seconds before next retry
-      connection,
       lpTokenAccount,
       lpTokenMint,
       mintTxLPTokenBalance
@@ -170,7 +169,6 @@ function reduceBalancesToTokensSet(balances: TokenBalance[]): Set<string> {
 async function getPercentOfBurnedTokensWithRetry(
   attempts: number,
   waitBeforeAttempt: number,
-  connection: Connection,
   lpTokenAccount: PublicKey,
   lpTokenMint: string,
   mintTxLPTokenBalance: TokenBalance,
@@ -178,7 +176,7 @@ async function getPercentOfBurnedTokensWithRetry(
   let attempt = 1
   while (attempt <= attempts) {
     try {
-      const burnedPercent = await getPercentOfBurnedTokens(connection, lpTokenAccount, lpTokenMint, mintTxLPTokenBalance)
+      const burnedPercent = await getPercentOfBurnedTokens(lpTokenAccount, lpTokenMint, mintTxLPTokenBalance)
       if (burnedPercent >= 1) {
         return burnedPercent
       }
@@ -198,7 +196,6 @@ async function getPercentOfBurnedTokensWithRetry(
 const BURN_INSTRCUTIONS = new Set(['burnChecked', 'burn'])
 
 async function getPercentOfBurnedTokens(
-  connection: Connection,
   lpTokenAccount: PublicKey,
   lpTokenMint: string,
   mintTxLPTokenBalance: TokenBalance,

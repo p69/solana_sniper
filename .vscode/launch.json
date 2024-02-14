@@ -25,6 +25,17 @@
         "${workspaceFolder}/client/dist/**/*.js"
       ],
       "sourceMaps": true
+    },
+    {
+      "type": "node",
+      "request": "launch",
+      "name": "Launch Serum Test",
+      "preLaunchTask": "tsc: build - tsconfig.json",
+      "program": "${workspaceFolder}/client/Trader/SerumMarket.ts",
+      "outFiles": [
+        "${workspaceFolder}/client/dist/**/*.js"
+      ],
+      "sourceMaps": true
     }
   ]
 }

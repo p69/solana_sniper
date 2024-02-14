@@ -49,7 +49,7 @@ export async function findTokenAccountAddress(connection: Connection, tokenMintA
   }
 }
 
-async function getTransactionConfirmation(connection: Connection, txid: string): Promise<SignatureResult> {
+export async function getTransactionConfirmation(connection: Connection, txid: string): Promise<SignatureResult> {
   const confirmResult = await connection.confirmTransaction({ signature: txid, ...(await connection.getLatestBlockhash()) }, 'confirmed');
   return confirmResult.value;
 }
@@ -139,4 +139,27 @@ export function lamportsToSOLNumber(lamportsBN: BN): number | undefined {
     console.warn('The amount of SOL exceeds the safe integer limit for JavaScript numbers.');
     return undefined; // or handle as appropriate
   }
+}
+
+export async function retryAsyncFunction<T, Args extends any[]>(
+  fn: (...args: Args) => Promise<T>, // Async function to retry
+  args: Args,                        // Arguments of the async function
+  retries: number = 5,               // Number of retries
+  delay: number = 300               // Delay between retries in milliseconds
+): Promise<T> {
+  let lastError: Error | undefined;
+
+  for (let attempt = 0; attempt < retries; attempt++) {
+    try {
+      return await fn(...args); // Attempt to execute the function
+    } catch (error) {
+      lastError = error as Error;
+      if (attempt < retries - 1) {
+        await new Promise(resolve => setTimeout(resolve, delay)); // Wait for the delay before retrying
+      }
+    }
+  }
+
+  // If all retries failed, throw the last error
+  throw lastError;
 }

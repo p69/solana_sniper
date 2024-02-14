@@ -30,7 +30,7 @@ const DANGEROUS_TRADING_STRATEGY = {
 const seenTransactions = new Set();
 let poolIsProcessing = false;
 
-const TEST_TX = '3Q7XZBGoqMVz5v6Kt9DMUhjSwVdQZaJsxajC5dA46gQryTM27XXCnVmKjmkXvpSSxxdKBCBw1AjNTfESMgGmqCzx'
+const TEST_TX = '5WaD3YGDY8xGuBEanaqqNNFEU9qU2JuHPFhdS8RAZJLYK3APQd2wqaAjFypJMAhfVeQwWyYDYtQLUNvuRYKXgfSE'
 
 
 async function handleNewTxLog(connection: Connection, txId: string): Promise<PoolWithStrategy | null> {

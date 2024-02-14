@@ -162,10 +162,7 @@ export async function calcProfit(
     console.log(`${chalk.bold('amount out: ')}: ${amountOut.toFixed()}`);
     console.log(`${chalk.bold('min amount out: ')}: ${minAmountOut.toFixed()}`);
 
-    const amountOutInSOL = lamportsToSOLNumber(amountOut.raw);
-    if (amountOutInSOL === undefined) {
-      return null;
-    }
+    const amountOutInSOL = amountOut.raw.toNumber()
     const potentialProfit = (amountOutInSOL - spent) / spent;
 
     return { currentAmountOut: amountOutInSOL, profit: potentialProfit };
@@ -183,12 +180,12 @@ async function loopAndWaitForProfit(
   tokenOut: Token,
   poolKeys: LiquidityPoolKeysV4,
   cancellationToken: { cancelled: boolean }
-) {
+): Promise<number> {
   const STOP_LOSS_PERCENT = -0.5
 
   let profitToTakeOrLose: number = 0;
   let prevAmountOut: number = 0;
-  let priceDownCounter = 10;
+  let priceDownCounter = 5;
   while (priceDownCounter > 0 && profitToTakeOrLose < targetProfitPercentage && profitToTakeOrLose > STOP_LOSS_PERCENT) {
     if (cancellationToken.cancelled) {
       break;
@@ -206,16 +203,16 @@ async function loopAndWaitForProfit(
           priceDownCounter -= 1;
         } else {
           console.log(chalk.bgGreen(`Price is UP`));
-          if (priceDownCounter < 10) { priceDownCounter += 1; }
+          if (priceDownCounter < 5) { priceDownCounter += 1; }
         }
 
         prevAmountOut = currentAmountOut;
       }
       console.log(chalk.bold(`Profit to take: ${profitToTakeOrLose}. PriceDownCounter: ${priceDownCounter}`));
-      await delay(300);
+      await delay(500);
     } catch (e) {
       console.log(`${chalk.red(`Failed to profit with error: ${e}`)}`);
-      await delay(300);
+      await delay(500);
     }
   }
 
@@ -230,18 +227,19 @@ export async function waitForProfitOrTimeout(
   tokenOut: Token,
   poolKeys: LiquidityPoolKeysV4,
   timeutInMillis: number
-) {
+): Promise<number> {
   let lastProfitToTake: number = 0;
   const cancellationToken = { cancelled: false }
   try {
     lastProfitToTake = await Promise.race([
       loopAndWaitForProfit(spentAmount, targetProfitPercentage, connection, amountIn, tokenOut, poolKeys, cancellationToken),
       timeout(timeutInMillis, cancellationToken)
-    ]);
+    ])
   } catch (e) {
     console.log(`Timeout happened ${chalk.bold('Profit to take: ')} ${lastProfitToTake < 0 ? chalk.red(lastProfitToTake) : chalk.green(lastProfitToTake)}`);
   }
   console.log(`Fixing profit ${chalk.bold('Profit to take: ')} ${lastProfitToTake < 0 ? chalk.red(lastProfitToTake) : chalk.green(lastProfitToTake)}`);
+  return lastProfitToTake
 }
 
 export async function validateTradingTrendOrTimeout(
@@ -263,9 +261,9 @@ export async function validateTradingTrendOrTimeout(
   return trendingCondition;
 }
 
-type PriceTrend = 'UP' | 'DOWN';
+type PriceTrend = 'UP' | 'DOWN' | 'UNSTABLE';
 export type GeneralTokenCondition =
-  'PUMPING' | 'DUMPING' | 'NOT_PUMPING_BUT_GROWING' | 'NOT_DUMPING_BUT_DIPPING';
+  'PUMPING' | 'DUMPING' | 'NOT_PUMPING_BUT_GROWING' | 'NOT_DUMPING_BUT_DIPPING' | 'ALREADY_DUMPED'
 
 async function loopAndCheckPriceTrend(
   connection: Connection,
@@ -304,6 +302,11 @@ async function loopAndCheckPriceTrend(
     return null;
   }
 
+  if (allChecks.find((x) => x.trend === 'UNSTABLE')) {
+    /// Price is too valotile, most likely it's already dumped
+    return 'ALREADY_DUMPED'
+  }
+
   const upsCount = allChecks.filter((x) => x.trend === 'UP').length;
   const downsCount = allChecks.filter((x) => x.trend === 'DOWN').length;
 
@@ -323,6 +326,13 @@ async function checkPriceTrend(
     const firstAttempt = await calculateAmountOut(connection, amountIn, tokenOut, poolKeys)
     await delay(200);
     const secodAttempt = await calculateAmountOut(connection, amountIn, tokenOut, poolKeys)
+
+    const dumpedPriceImpactPercent = 29 /// 30%
+    const secondPriceImpact = Number(secodAttempt.priceImpact)
+    const firstPriceImpact = Number(firstAttempt.priceImpact)
+    if (secondPriceImpact > dumpedPriceImpactPercent || firstPriceImpact > dumpedPriceImpactPercent) {
+      return { amountOut: secodAttempt.amountOut, trend: 'UNSTABLE' }
+    }
 
     const trend = firstAttempt.amountOut.gt(secodAttempt.amountOut) ? 'DOWN' : 'UP';
     return { amountOut: secodAttempt.amountOut, trend };
