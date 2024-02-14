@@ -1,8 +1,8 @@
-import { TOKEN_PROGRAM_ID, TokenAccount, SPL_ACCOUNT_LAYOUT } from '@raydium-io/raydium-sdk';
+import { TOKEN_PROGRAM_ID, TokenAccount, SPL_ACCOUNT_LAYOUT, LiquidityPoolKeysV4 } from '@raydium-io/raydium-sdk';
 import { Connection, PublicKey, SignatureResult, Commitment, TokenBalance } from '@solana/web3.js'
-import splToken from '@solana/spl-token';
 import chalk from 'chalk';
 import { BN } from '@project-serum/anchor';
+import { PoolKeys } from './PoolValidator/RaydiumPoolParser';
 
 export function printTime(date: Date) {
   const formatted = formatDate(date);
@@ -162,4 +162,34 @@ export async function retryAsyncFunction<T, Args extends any[]>(
 
   // If all retries failed, throw the last error
   throw lastError;
+}
+
+export function convertStringKeysToDataKeys(poolInfo: PoolKeys): LiquidityPoolKeysV4 {
+  return {
+    id: new PublicKey(poolInfo.id),
+    baseMint: new PublicKey(poolInfo.baseMint),
+    quoteMint: new PublicKey(poolInfo.quoteMint),
+    lpMint: new PublicKey(poolInfo.lpMint),
+    baseDecimals: poolInfo.baseDecimals,
+    quoteDecimals: poolInfo.quoteDecimals,
+    lpDecimals: poolInfo.lpDecimals,
+    version: 4,
+    programId: new PublicKey(poolInfo.programId),
+    authority: new PublicKey(poolInfo.authority),
+    openOrders: new PublicKey(poolInfo.openOrders),
+    targetOrders: new PublicKey(poolInfo.targetOrders),
+    baseVault: new PublicKey(poolInfo.baseVault),
+    quoteVault: new PublicKey(poolInfo.quoteVault),
+    withdrawQueue: new PublicKey(poolInfo.withdrawQueue),
+    lpVault: new PublicKey(poolInfo.lpVault),
+    marketVersion: 3,
+    marketProgramId: new PublicKey(poolInfo.marketProgramId),
+    marketId: new PublicKey(poolInfo.marketId),
+    marketAuthority: new PublicKey(poolInfo.marketAuthority),
+    marketBaseVault: new PublicKey(poolInfo.baseVault),
+    marketQuoteVault: new PublicKey(poolInfo.quoteVault),
+    marketBids: new PublicKey(poolInfo.marketBids),
+    marketAsks: new PublicKey(poolInfo.marketAsks),
+    marketEventQueue: new PublicKey(poolInfo.marketEventQueue),
+  } as LiquidityPoolKeysV4;
 }

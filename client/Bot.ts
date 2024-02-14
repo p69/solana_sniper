@@ -20,9 +20,33 @@ const traderPool = new Piscina({
 
 const seenTransactions = new Set();
 
+const TEST_TX = '3icAouyXwu9m2bkcGS6qRKmSsCdGBDqVQQW5HUFxnQoFyHcxrKSAixq8MB52ksZUPJym75w7MmcMxLUUh39Ucznh'
+
+async function handleNewPoolMintTx(txId: string) {
+  console.log(chalk.yellow(`Find pool with tx - ${txId} Sending to Validator`))
+  const msg: ValidatePoolData = {
+    mintTxId: txId,
+    date: new Date()
+  }
+
+  const validationResults: PoolValidationResults = await validatorPool.run(msg)
+
+  console.log(chalk.yellow(`Validation results`))
+  console.log(JSON.stringify(validationResults, null, 2))
+  if (validationResults.safetyStatus === 'RED') {
+    console.log(chalk.red('Red token. Skipping'))
+    return
+  }
+
+  const tradeResults = await traderPool.run(validationResults)
+
+  console.log(chalk.yellow('Got trading results'))
+  console.log(JSON.stringify(tradeResults, null, 2))
+}
+
 async function main() {
   /* Uncomment to perform single buy/sell test with predifined pool */
-  // await testWithExistingPool();
+  // await handleNewPoolMintTx(TEST_TX)
   // return;
   /* Uncomment to perform single buy/sell test with predifined pool */
 
@@ -41,25 +65,7 @@ async function main() {
       return; // If "init_pc_amount" is not in log entries then it's not LP initialization transaction
     }
 
-    console.log(chalk.yellow(`Find pool with tx - ${txLogs.signature} Sending to Validator`))
-    const msg: ValidatePoolData = {
-      mintTxId: txLogs.signature,
-      date: new Date()
-    }
-
-    const validationResults: PoolValidationResults = await validatorPool.run(msg)
-
-    console.log(chalk.yellow(`Validation results`))
-    console.log(JSON.stringify(validationResults, null, 2))
-    if (validationResults.safetyStatus === 'RED') {
-      console.log(chalk.red('Red token. Skipping'))
-      return
-    }
-
-    const tradeResults = await traderPool.run(validationResults)
-
-    console.log(chalk.yellow('Got trading results'))
-    console.log(JSON.stringify(tradeResults, null, 2))
+    await handleNewPoolMintTx(txLogs.signature)
   });
   console.log(chalk.cyan('Listening to new pools...'))
 }

@@ -1,10 +1,10 @@
 import { PoolValidationResults, TokenSafetyStatus } from '../PoolValidator/ValidationResult'
 import { GeneralTokenCondition } from '../Swap'
-import { Token, TokenAmount, WSOL } from '@raydium-io/raydium-sdk'
+import { LiquidityPoolKeysV4, Token, TokenAmount, WSOL } from '@raydium-io/raydium-sdk'
 import { SOL_SPL_TOKEN_ADDRESS, PAYER, OWNER_ADDRESS } from "./Addresses"
 import { DANGEROUS_EXIT_STRATEGY, ExitStrategy, SAFE_EXIT_STRATEGY } from './ExitStrategy'
 import { TradeRecord, fetchLatestTrades } from './TradesFetcher'
-import { retryAsyncFunction } from '../Utils'
+import { convertStringKeysToDataKeys, retryAsyncFunction } from '../Utils'
 import { connection } from './Connection'
 import { buyToken } from './BuyToken'
 import { getAssociatedTokenAddressSync, TOKEN_PROGRAM_ID } from '@solana/spl-token'
@@ -31,12 +31,12 @@ async function tryPerformTrading(validationResults: PoolValidationResults): Prom
     return { kind: 'FAILED', reason: 'RED coin', txId: null }
   }
 
-  const pool = validationResults.pool
+  const pool = convertStringKeysToDataKeys(validationResults.pool)
 
   let tokenAMint = pool.baseMint.toString() === WSOL.mint ? pool.baseMint : pool.quoteMint;
   let tokenBMint = pool.baseMint.toString() !== WSOL.mint ? pool.baseMint : pool.quoteMint;
   let tokenBDecimals = pool.baseMint.toString() === tokenBMint.toString() ? pool.baseDecimals : pool.quoteDecimals;
-  const tokenBToken = new Token(TOKEN_PROGRAM_ID, tokenBMint.toString(), tokenBDecimals)
+  const tokenBToken = new Token(TOKEN_PROGRAM_ID, tokenBMint, tokenBDecimals)
   const tokenBAccountAddress = getAssociatedTokenAddressSync(tokenBMint, OWNER_ADDRESS, false);
 
   console.log(`Verify tokens A - ${tokenAMint.toString()}   B - ${tokenBMint.toString()}`);
@@ -106,3 +106,4 @@ function determineTrend(data: TradeRecord[]): ChartTrend {
   const trend: ChartTrend = recentData[recentData.length - 1].priceInSOL > average ? 'GROWING' : 'DIPPING';
   return trend; // This is a very simplified way to determine the trend
 }
+

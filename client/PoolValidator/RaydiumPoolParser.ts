@@ -16,6 +16,34 @@ const SERUM_OPENBOOK_PROGRAM_ID = 'srmqPvymJeFKQ4zGQed1GFppgkRHL9kaELCbyksJtPX';
 const SOL_MINT = 'So11111111111111111111111111111111111111112';
 const SOL_DECIMALS = 9;
 
+export interface PoolKeys {
+  id: string,
+  baseMint: string,
+  quoteMint: string,
+  lpMint: string,
+  baseDecimals: number,
+  quoteDecimals: number,
+  lpDecimals: number,
+  version: number,
+  programId: string,
+  authority: string,
+  openOrders: string,
+  targetOrders: string,
+  baseVault: string,
+  quoteVault: string,
+  withdrawQueue: string,
+  lpVault: string,
+  marketVersion: number,
+  marketProgramId: string,
+  marketId: string,
+  marketAuthority: string,
+  marketBaseVault: string,
+  marketQuoteVault: string,
+  marketBids: string,
+  marketAsks: string,
+  marketEventQueue: string,
+}
+
 export function findLogEntry(needle: string, logEntries: Array<string>): string | null {
   for (let i = 0; i < logEntries.length; ++i) {
     if (logEntries[i].includes(needle)) {
@@ -27,7 +55,7 @@ export function findLogEntry(needle: string, logEntries: Array<string>): string 
 }
 
 export async function fetchPoolKeysForLPInitTransactionHash(txSignature: string)
-  : Promise<{ poolKeys: LiquidityPoolKeysV4, mintTransaction: ParsedTransactionWithMeta }> {
+  : Promise<{ poolKeys: PoolKeys, mintTransaction: ParsedTransactionWithMeta }> {
   console.log(chalk.yellow(`Fetching TX inf ${txSignature}`));
   const tx = await retryGetParsedTransaction(txSignature, 5)
   if (!tx) {
@@ -37,32 +65,32 @@ export async function fetchPoolKeysForLPInitTransactionHash(txSignature: string)
   const marketInfo = await fetchMarketInfo(poolInfo.marketId);
 
   const keys = {
-    id: poolInfo.id,
-    baseMint: poolInfo.baseMint,
-    quoteMint: poolInfo.quoteMint,
-    lpMint: poolInfo.lpMint,
+    id: poolInfo.id.toString(),
+    baseMint: poolInfo.baseMint.toString(),
+    quoteMint: poolInfo.quoteMint.toString(),
+    lpMint: poolInfo.lpMint.toString(),
     baseDecimals: poolInfo.baseDecimals,
     quoteDecimals: poolInfo.quoteDecimals,
     lpDecimals: poolInfo.lpDecimals,
     version: 4,
-    programId: poolInfo.programId,
-    authority: poolInfo.authority,
-    openOrders: poolInfo.openOrders,
-    targetOrders: poolInfo.targetOrders,
-    baseVault: poolInfo.baseVault,
-    quoteVault: poolInfo.quoteVault,
-    withdrawQueue: poolInfo.withdrawQueue,
-    lpVault: poolInfo.lpVault,
+    programId: poolInfo.programId.toString(),
+    authority: poolInfo.authority.toString(),
+    openOrders: poolInfo.openOrders.toString(),
+    targetOrders: poolInfo.targetOrders.toString(),
+    baseVault: poolInfo.baseVault.toString(),
+    quoteVault: poolInfo.quoteVault.toString(),
+    withdrawQueue: poolInfo.withdrawQueue.toString(),
+    lpVault: poolInfo.lpVault.toString(),
     marketVersion: 3,
-    marketProgramId: poolInfo.marketProgramId,
-    marketId: poolInfo.marketId,
-    marketAuthority: Market.getAssociatedAuthority({ programId: poolInfo.marketProgramId, marketId: poolInfo.marketId }).publicKey,
-    marketBaseVault: marketInfo.baseVault,
-    marketQuoteVault: marketInfo.quoteVault,
-    marketBids: marketInfo.bids,
-    marketAsks: marketInfo.asks,
-    marketEventQueue: marketInfo.eventQueue,
-  } as LiquidityPoolKeysV4;
+    marketProgramId: poolInfo.marketProgramId.toString(),
+    marketId: poolInfo.marketId.toString(),
+    marketAuthority: Market.getAssociatedAuthority({ programId: poolInfo.marketProgramId, marketId: poolInfo.marketId }).publicKey.toString(),
+    marketBaseVault: marketInfo.baseVault.toString(),
+    marketQuoteVault: marketInfo.quoteVault.toString(),
+    marketBids: marketInfo.bids.toString(),
+    marketAsks: marketInfo.asks.toString(),
+    marketEventQueue: marketInfo.eventQueue.toString(),
+  }
   return { mintTransaction: tx, poolKeys: keys }
 }
 

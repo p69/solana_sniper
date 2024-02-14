@@ -4,6 +4,7 @@ import { fetchPoolKeysForLPInitTransactionHash } from './RaydiumPoolParser'
 import { Liquidity } from '@raydium-io/raydium-sdk'
 import { connection } from './Connection'
 import { checkToken } from './RaydiumSafetyCheck'
+import { convertStringKeysToDataKeys } from '../Utils'
 
 export type ValidatePoolData = {
   mintTxId: string,
@@ -24,7 +25,8 @@ module.exports = async (data: ValidatePoolData) => {
 async function validateNewPool(mintTxId: string): Promise<PoolValidationResults | string> {
   try {
     const { poolKeys, mintTransaction } = await fetchPoolKeysForLPInitTransactionHash(mintTxId); // With poolKeys you can do a swap
-    const info = await Liquidity.fetchInfo({ connection: connection, poolKeys: poolKeys });
+    const binaryPoolKeys = convertStringKeysToDataKeys(poolKeys)
+    const info = await Liquidity.fetchInfo({ connection: connection, poolKeys: binaryPoolKeys });
     const features: PoolFeatures = Liquidity.getEnabledFeatures(info);
 
     if (!features.swap) {
@@ -37,7 +39,7 @@ async function validateNewPool(mintTxId: string): Promise<PoolValidationResults 
       }
     }
 
-    const safetyCheckResults = await checkToken(mintTransaction, poolKeys)
+    const safetyCheckResults = await checkToken(mintTransaction, binaryPoolKeys)
 
     if (safetyCheckResults === null) {
       return {

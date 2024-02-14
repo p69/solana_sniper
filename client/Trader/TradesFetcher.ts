@@ -38,33 +38,38 @@ function parseTradingData(
   tokenDecimals: number): TradeRecord[] {
   let results: TradeRecord[] = []
 
-  for (let txOrNull of transactions) {
-    if (!txOrNull) { continue }
+  try {
+    for (let i = 0; i < transactions.length; i++) {
+      const txOrNull = transactions[i]
+      if (!txOrNull) { continue }
 
-    const inner = txOrNull.meta?.innerInstructions
-    if (!inner) { continue }
+      const inner = txOrNull.meta?.innerInstructions
+      if (!inner) { continue }
 
-    const splTransferPairs = inner.map(x => x.instructions.filter((a: any) => a.program === 'spl-token'))
-    const splTransferPair = splTransferPairs.find(x => x.length >= 2)
+      const splTransferPairs = inner.map(x => x.instructions.filter((a: any) => a.program === 'spl-token' && a.parsed.type === 'transfer'))
+      const splTransferPair = splTransferPairs.find(x => x.length >= 2)
 
-    if (splTransferPair) {
-      const inInfo: SPLTransferInfo = (splTransferPair[0] as any).parsed.info
-      const outInfo: SPLTransferInfo = (splTransferPair[1] as any).parsed.info
-      const userShitAcc = getAssociatedTokenAddressSync(tokenMint, new PublicKey(inInfo.authority))
-      const isSelling = inInfo.source === userShitAcc.toString()
+      if (splTransferPair) {
+        const inInfo: SPLTransferInfo = (splTransferPair[0] as any).parsed.info
+        const outInfo: SPLTransferInfo = (splTransferPair[1] as any).parsed.info
+        const userShitAcc = getAssociatedTokenAddressSync(tokenMint, new PublicKey(inInfo.authority), true)
+        const isSelling = inInfo.source === userShitAcc.toString()
 
 
-      const shitAmount = Number(isSelling ? inInfo.amount : outInfo.amount) / (10 ** tokenDecimals)
-      const solAmount = Number(isSelling ? outInfo.amount : inInfo.amount) / (10 ** WSOL.decimals)
-      const priceInSOL = solAmount / shitAmount
-      results.push({
-        signature: txOrNull.transaction.signatures[0],
-        date: new Date(txOrNull.blockTime ?? 0),
-        type: isSelling ? 'SELL' : 'BUY',
-        rawAmount: isSelling ? inInfo.amount : outInfo.amount,
-        priceInSOL: priceInSOL
-      })
+        const shitAmount = Number(isSelling ? inInfo.amount : outInfo.amount) / (10 ** tokenDecimals)
+        const solAmount = Number(isSelling ? outInfo.amount : inInfo.amount) / (10 ** WSOL.decimals)
+        const priceInSOL = solAmount / shitAmount
+        results.push({
+          signature: txOrNull.transaction.signatures[0],
+          date: new Date(txOrNull.blockTime ?? 0),
+          type: isSelling ? 'SELL' : 'BUY',
+          rawAmount: isSelling ? inInfo.amount : outInfo.amount,
+          priceInSOL: priceInSOL
+        })
+      }
     }
+  } catch (e) {
+    console.log(`Failed to parse history ${e}`)
   }
 
   return results

@@ -1,4 +1,5 @@
-import { LiquidityPoolKeysV4, LiquidityPoolInfo } from "@raydium-io/raydium-sdk"
+import { LiquidityPoolInfo } from "@raydium-io/raydium-sdk"
+import { PoolKeys } from "./RaydiumPoolParser"
 
 export type PoolFeatures = {
   swap: boolean,
@@ -7,7 +8,7 @@ export type PoolFeatures = {
 }
 
 export type PoolValidationResults = {
-  pool: LiquidityPoolKeysV4,
+  pool: PoolKeys,
   poolInfo: LiquidityPoolInfo,
   poolFeatures: PoolFeatures,
   safetyStatus: TokenSafetyStatus,
