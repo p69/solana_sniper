@@ -1,7 +1,7 @@
 import { parentPort } from 'worker_threads'
 import { PoolValidationResults, PoolFeatures, TokenSafetyStatus } from './ValidationResult'
 import { fetchPoolKeysForLPInitTransactionHash } from './RaydiumPoolParser'
-import { Liquidity } from '@raydium-io/raydium-sdk'
+import { Liquidity, LiquidityPoolStatus } from '@raydium-io/raydium-sdk'
 import { connection } from './Connection'
 import { checkToken } from './RaydiumSafetyCheck'
 import { convertStringKeysToDataKeys } from '../Utils'
@@ -27,6 +27,12 @@ async function validateNewPool(mintTxId: string): Promise<PoolValidationResults 
     const { poolKeys, mintTransaction } = await fetchPoolKeysForLPInitTransactionHash(mintTxId); // With poolKeys you can do a swap
     const binaryPoolKeys = convertStringKeysToDataKeys(poolKeys)
     const info = await Liquidity.fetchInfo({ connection: connection, poolKeys: binaryPoolKeys });
+    let startTime: number | null = null
+    const status = info.status.toNumber()
+    if (status === LiquidityPoolStatus.WaitingForStart) {
+      //if (Date.now() / 1000 < startTime.toNumber())
+      startTime = info.startTime.toNumber()
+    }
     const features: PoolFeatures = Liquidity.getEnabledFeatures(info);
 
     if (!features.swap) {
@@ -35,6 +41,7 @@ async function validateNewPool(mintTxId: string): Promise<PoolValidationResults 
         poolInfo: info,
         poolFeatures: features,
         safetyStatus: 'RED',
+        startTimeInEpoch: startTime,
         reason: 'Swapping is disabled'
       }
     }
@@ -47,6 +54,7 @@ async function validateNewPool(mintTxId: string): Promise<PoolValidationResults 
         poolInfo: info,
         poolFeatures: features,
         safetyStatus: 'RED',
+        startTimeInEpoch: startTime,
         reason: `Couldn't verify safety. 'checkToken' fucntion failed`
       }
     }
@@ -63,6 +71,7 @@ async function validateNewPool(mintTxId: string): Promise<PoolValidationResults 
         poolInfo: info,
         poolFeatures: features,
         safetyStatus: 'RED',
+        startTimeInEpoch: startTime,
         reason: `Liquidity is too low or too high`
       }
     }
@@ -75,6 +84,7 @@ async function validateNewPool(mintTxId: string): Promise<PoolValidationResults 
         poolInfo: info,
         poolFeatures: features,
         safetyStatus: 'RED',
+        startTimeInEpoch: startTime,
         reason: `Big percent of liquidity is unlocked`
       }
     }
@@ -92,6 +102,7 @@ async function validateNewPool(mintTxId: string): Promise<PoolValidationResults 
             poolInfo: info,
             poolFeatures: features,
             safetyStatus: 'YELLOW',
+            startTimeInEpoch: startTime,
             reason: `Most of the tokens are in pool, but token is still mintable`
           }
         } else {
@@ -101,6 +112,7 @@ async function validateNewPool(mintTxId: string): Promise<PoolValidationResults 
             poolInfo: info,
             poolFeatures: features,
             safetyStatus: 'GREEN',
+            startTimeInEpoch: startTime,
             reason: `Liquidity is locked. Token is not mintable. Green light`
           }
         }
@@ -113,6 +125,7 @@ async function validateNewPool(mintTxId: string): Promise<PoolValidationResults 
             poolInfo: info,
             poolFeatures: features,
             safetyStatus: 'YELLOW',
+            startTimeInEpoch: startTime,
             reason: `At least 80% of the tokens are in pool, and token is not mintable`
           }
         } if (safetyCheckResults.newTokenPoolBalancePercent >= 0.95) {
@@ -122,6 +135,7 @@ async function validateNewPool(mintTxId: string): Promise<PoolValidationResults 
             poolInfo: info,
             poolFeatures: features,
             safetyStatus: 'YELLOW',
+            startTimeInEpoch: startTime,
             reason: `>95% of tokens are in pool, but token is still mintable`
           }
         } else {
@@ -131,6 +145,7 @@ async function validateNewPool(mintTxId: string): Promise<PoolValidationResults 
             poolInfo: info,
             poolFeatures: features,
             safetyStatus: 'RED',
+            startTimeInEpoch: startTime,
             reason: `Many tokens are not in pool and token is mintable`
           }
         }
@@ -141,6 +156,7 @@ async function validateNewPool(mintTxId: string): Promise<PoolValidationResults 
           poolInfo: info,
           poolFeatures: features,
           safetyStatus: 'RED',
+          startTimeInEpoch: startTime,
           reason: `Less then ${MIN_PERCENT_NEW_TOKEN_INPOOL * 100}% of tokens are not in pool.`
         }
       }
@@ -153,6 +169,7 @@ async function validateNewPool(mintTxId: string): Promise<PoolValidationResults 
           poolInfo: info,
           poolFeatures: features,
           safetyStatus: 'YELLOW',
+          startTimeInEpoch: startTime,
           reason: `10% or less liquidity is unlocked, but token is not mintable`
         }
       } else {
@@ -163,6 +180,7 @@ async function validateNewPool(mintTxId: string): Promise<PoolValidationResults 
           poolInfo: info,
           poolFeatures: features,
           safetyStatus: 'RED',
+          startTimeInEpoch: startTime,
           reason: `10% or less liquidity is unlocked and token is mintable`
         }
       }

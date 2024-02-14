@@ -101,11 +101,12 @@ async function retryGetParsedTransaction(
   attempt: number = 1
 ): Promise<ParsedTransactionWithMeta | null> {
   try {
+    console.log(`Attempt ${attempt} to get  https://solscan.io/tx/${txSignature} info`)
     const tx = await connection.getParsedTransaction(txSignature, { maxSupportedTransactionVersion: 0 });
     if (tx !== null) {
       return tx; // Return the transaction if it's not null
     } else if (attempt < maxAttempts) {
-      console.log(`Attempt ${attempt} failed, retrying...`);
+      console.log(`Attempt ${attempt} failed, retrying...`)
       await delay(delayMs) // Wait for the specified delay
       return retryGetParsedTransaction(txSignature, maxAttempts, delayMs, attempt + 1);
     } else {

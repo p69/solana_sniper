@@ -12,6 +12,7 @@ export type PoolValidationResults = {
   poolInfo: LiquidityPoolInfo,
   poolFeatures: PoolFeatures,
   safetyStatus: TokenSafetyStatus,
+  startTimeInEpoch: number | null,
   reason: string
 }
 

@@ -7,6 +7,7 @@ import { findLogEntry } from './PoolValidator/RaydiumPoolParser';
 import chalk from 'chalk';
 import { ValidatePoolData } from './PoolValidator/RaydiumPoolValidator';
 import { PoolValidationResults } from './PoolValidator/ValidationResult';
+import { delay } from './Utils';
 
 const RAYDIUM_PUBLIC_KEY = '675kPX9MHTjS2zt1qfr1NYHuzeLXfQM9H24wFSUt1Mp8';
 
@@ -29,10 +30,39 @@ async function handleNewPoolMintTx(txId: string) {
     date: new Date()
   }
 
-  const validationResults: PoolValidationResults = await validatorPool.run(msg)
+  let validationResults: PoolValidationResults | string = await validatorPool.run(msg)
+  if (typeof validationResults === `string`) {
+    console.log(`Failed to validate with error: ${validationResults}`)
+    return
+  }
 
-  console.log(chalk.yellow(`Validation results`))
-  console.log(JSON.stringify(validationResults, null, 2))
+  console.log(chalk.yellow(`Validation results for pool ${validationResults.pool.id}`))
+  if (validationResults.startTimeInEpoch) {
+    console.log(`Pool is postoned.`)
+    console.log(`START TIME: ${validationResults.startTimeInEpoch}`)
+    const delayBeforeStart = (validationResults.startTimeInEpoch * 1000) - Date.now()
+    const maxTimeToWait = 24 * 60 * 60 * 1000
+    console.log(`Pool ${validationResults.pool.id} starts in ${delayBeforeStart / 1000} seconds`)
+    if (delayBeforeStart > 0 && delayBeforeStart < maxTimeToWait) {
+      console.log(`Wait until it starts`)
+      await delay(delayBeforeStart + 300)
+      validationResults = await validatorPool.run(msg)
+      console.log(`Got updated results`)
+    } else {
+      console.log(`It's too long, don't wait. Need to add more robust scheduler`)
+    }
+  }
+
+  if (typeof validationResults === `string`) {
+    console.log(`Failed to validate with error: ${validationResults}`)
+    return
+  }
+
+  console.log(JSON.stringify(validationResults.pool, null, 2))
+  console.log(JSON.stringify(validationResults.poolFeatures, null, 2))
+  console.log(JSON.stringify(validationResults.safetyStatus, null, 2))
+  console.log(JSON.stringify(validationResults.reason, null, 2))
+
   if (validationResults.safetyStatus === 'RED') {
     console.log(chalk.red('Red token. Skipping'))
     return
