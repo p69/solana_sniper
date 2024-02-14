@@ -14,6 +14,6 @@ export const DANGEROUS_EXIT_STRATEGY: ExitStrategy = {
 }
 
 export const RED_TEST_EXIT_STRATEGY: ExitStrategy = {
-  exitTimeoutInMillis: 1000, // 1 minutes time when token looks good
+  exitTimeoutInMillis: 1000, // 1 second time when token looks good
   targetProfit: 0.01, // make 9% (10% for slippage) in more secure way. owner could dump all tokens
 }

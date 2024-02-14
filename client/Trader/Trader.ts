@@ -97,8 +97,8 @@ async function tryPerformTrading(validationResults: PoolValidationResults): Prom
 function getBuyAmountInSOL(tokenStatus: TokenSafetyStatus): number | null {
   switch (tokenStatus) {
     case 'RED': return 0.01
-    case 'YELLOW': return 0.01
-    case 'GREEN': return 0.01
+    case 'YELLOW': return 0.1
+    case 'GREEN': return 0.3
   }
 }
 
