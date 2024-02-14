@@ -4,7 +4,7 @@ import { LiquidityPoolKeysV4, TokenAmount, WSOL } from "@raydium-io/raydium-sdk"
 import { PAYER, WSOL_TOKEN } from "./Addresses";
 import { swapTokens, waitForProfitOrTimeout } from "../Swap";
 import chalk from "chalk";
-import { getTransactionConfirmation, retryAsyncFunction } from "../Utils";
+import { delay, getTransactionConfirmation, retryAsyncFunction } from "../Utils";
 
 interface SellSuccess {
   kind: 'SUCCESS',
@@ -81,8 +81,8 @@ async function sellAndConfirm(
     txid = await retryAsyncFunction(swapTokens,
       [connection,
         pool,
-        mainTokenAccountAddress,
         shitcoinAccountAddress,
+        mainTokenAccountAddress,
         PAYER,
         amountToSell])
   } catch (e) {
@@ -128,7 +128,7 @@ async function getSOLAmount(connection: Connection, sellTxId: string): Promise<n
   const inner = parsedTx.meta?.innerInstructions
   if (!inner) { return 0 }
 
-  const splTransferPairs = inner.map(x => x.instructions.filter((a: any) => a.program === 'spl-token'))
+  const splTransferPairs = inner.map(x => x.instructions.filter((a: any) => a.program === 'spl-token' && a.parsed.type === 'transfer'))
   const splTransferPair = splTransferPairs.find(x => x.length >= 2)
 
   if (splTransferPair) {
@@ -148,6 +148,7 @@ async function getParsedTxWithMeta(connection: Connection, txId: string): Promis
     if (result !== null) {
       return result
     }
+    await delay(500)
     attempt += 1
   }
   return result
