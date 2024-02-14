@@ -11,3 +11,14 @@ export function findDumpingRecord(data: TradeRecord[], threshold: number = 50): 
   }
   return null; // No dump detected
 }
+
+export type ChartTrend = 'GROWING' | 'DIPPING'
+export function determineTrend(data: TradeRecord[]): ChartTrend {
+  const recentData = data.slice(-14); // Last 14 data points, adjust as needed
+  const total = recentData.reduce((acc, val) => acc + val.priceInSOL, 0);
+  const average = total / recentData.length;
+
+  const trend: ChartTrend = recentData[recentData.length - 1].priceInSOL > average ? 'GROWING' : 'DIPPING';
+  return trend; // This is a very simplified way to determine the trend
+}
+

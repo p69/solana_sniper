@@ -20,7 +20,7 @@ const traderPool = new Piscina({
 
 const seenTransactions = new Set();
 
-const TEST_TX = '3icAouyXwu9m2bkcGS6qRKmSsCdGBDqVQQW5HUFxnQoFyHcxrKSAixq8MB52ksZUPJym75w7MmcMxLUUh39Ucznh'
+const TEST_TX = '3ha4QStA5dwLyn2FL5v4UYLi3GQypfX8XXuJm5B67M1FqkafVqw71zPkSWkB2otapzquSNWEUN4NeLRPgKmsjm8B'
 
 async function handleNewPoolMintTx(txId: string) {
   console.log(chalk.yellow(`Find pool with tx - ${txId} Sending to Validator`))

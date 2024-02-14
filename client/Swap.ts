@@ -162,7 +162,7 @@ export async function calcProfit(
     console.log(`${chalk.bold('amount out: ')}: ${amountOut.toFixed()}`);
     console.log(`${chalk.bold('min amount out: ')}: ${minAmountOut.toFixed()}`);
 
-    const amountOutInSOL = amountOut.raw.toNumber()
+    const amountOutInSOL = lamportsToSOLNumber(amountOut.raw) ?? 0
     const potentialProfit = (amountOutInSOL - spent) / spent;
 
     return { currentAmountOut: amountOutInSOL, profit: potentialProfit };
