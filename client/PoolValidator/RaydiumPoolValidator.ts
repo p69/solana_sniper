@@ -10,11 +10,16 @@ export type ValidatePoolData = {
   date: Date,
 }
 
-parentPort?.on('message', async (data) => {
-  const msg = data as ValidatePoolData
-  const validationResults = await validateNewPool(msg.mintTxId)
-  parentPort?.postMessage(validationResults)
-})
+module.exports = async (data: ValidatePoolData) => {
+  const validationResults = await validateNewPool(data.mintTxId)
+  return validationResults
+}
+
+// parentPort?.on('message', async (data) => {
+//   const msg = data as ValidatePoolData
+//   const validationResults = await validateNewPool(msg.mintTxId)
+//   parentPort?.postMessage(validationResults)
+// })
 
 async function validateNewPool(mintTxId: string): Promise<PoolValidationResults | string> {
   try {

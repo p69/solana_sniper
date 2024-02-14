@@ -1,3 +1,5 @@
+import * as dotenv from 'dotenv'
+dotenv.config()
 import { Connection, PublicKey } from '@solana/web3.js';
 import path from 'path';
 import Piscina from 'piscina';
