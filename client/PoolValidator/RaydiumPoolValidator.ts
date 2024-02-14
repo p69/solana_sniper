@@ -1,10 +1,11 @@
 import { parentPort } from 'worker_threads'
 import { PoolValidationResults, PoolFeatures, TokenSafetyStatus } from './ValidationResult'
 import { fetchPoolKeysForLPInitTransactionHash } from './RaydiumPoolParser'
-import { Liquidity, LiquidityPoolStatus } from '@raydium-io/raydium-sdk'
+import { Liquidity, LiquidityPoolInfo, LiquidityPoolKeysV4, LiquidityPoolStatus } from '@raydium-io/raydium-sdk'
 import { connection } from './Connection'
 import { checkToken } from './RaydiumSafetyCheck'
-import { convertStringKeysToDataKeys } from '../Utils'
+import { convertStringKeysToDataKeys, delay, retryAsyncFunction } from '../Utils'
+import { Connection } from '@solana/web3.js'
 
 export type ValidatePoolData = {
   mintTxId: string,
@@ -16,17 +17,41 @@ module.exports = async (data: ValidatePoolData) => {
   return validationResults
 }
 
-// parentPort?.on('message', async (data) => {
-//   const msg = data as ValidatePoolData
-//   const validationResults = await validateNewPool(msg.mintTxId)
-//   parentPort?.postMessage(validationResults)
-// })
+async function tryParseLiquidityPoolInfo(connection: Connection, poolKeys: LiquidityPoolKeysV4, attempt: number = 1, maxAttempts: number = 5): Promise<LiquidityPoolInfo | null> {
+  try {
+    console.log(`Getting LP info attempt ${attempt}.`)
+    const info = await Liquidity.fetchInfo({ connection: connection, poolKeys: poolKeys })
+    if (info !== null) {
+      console.log(`Successfully fetched LP info from attempt ${attempt}`)
+      return info; // Return the transaction if it's not null
+    } else if (attempt < maxAttempts) {
+      console.log(`Fetching LP info attempt ${attempt} failed, retrying...`)
+      await delay(200) // Wait for the specified delay
+      return tryParseLiquidityPoolInfo(connection, poolKeys, attempt + 1, maxAttempts)
+    } else {
+      console.log('Max attempts of fetching LP info reached, returning null')
+      return null; // Return null if max attempts are reached
+    }
+  } catch (error) {
+    console.error(`Fetching LP info attempt ${attempt} failed with error: ${error}, retrying...`)
+    if (attempt < maxAttempts) {
+      await delay(200) // Wait for the specified delay // Wait for the specified delay before retrying
+      return tryParseLiquidityPoolInfo(connection, poolKeys, attempt + 1, maxAttempts)
+    } else {
+      console.log('Max attempts of fetching LP info reached, returning null')
+      return null; // Return null if max attempts are reached
+    }
+  }
+}
 
 async function validateNewPool(mintTxId: string): Promise<PoolValidationResults | string> {
   try {
-    const { poolKeys, mintTransaction } = await fetchPoolKeysForLPInitTransactionHash(mintTxId); // With poolKeys you can do a swap
+    const { poolKeys, mintTransaction } = await fetchPoolKeysForLPInitTransactionHash(mintTxId) // With poolKeys you can do a swap
     const binaryPoolKeys = convertStringKeysToDataKeys(poolKeys)
-    const info = await Liquidity.fetchInfo({ connection: connection, poolKeys: binaryPoolKeys });
+    const info = await tryParseLiquidityPoolInfo(connection, binaryPoolKeys)
+    if (info === null) {
+      return `Couldn't get LP info, perhaps RPC issues`
+    }
     let startTime: number | null = null
     const status = info.status.toNumber()
     if (status === LiquidityPoolStatus.WaitingForStart) {

@@ -104,6 +104,7 @@ async function retryGetParsedTransaction(
     console.log(`Attempt ${attempt} to get  https://solscan.io/tx/${txSignature} info`)
     const tx = await connection.getParsedTransaction(txSignature, { maxSupportedTransactionVersion: 0 });
     if (tx !== null) {
+      console.log(`Successfully fetched https://solscan.io/tx/${txSignature} info from attempt ${attempt}`)
       return tx; // Return the transaction if it's not null
     } else if (attempt < maxAttempts) {
       console.log(`Attempt ${attempt} failed, retrying...`)
