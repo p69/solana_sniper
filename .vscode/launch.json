@@ -29,9 +29,9 @@
     {
       "type": "node",
       "request": "launch",
-      "name": "Launch Serum Test",
+      "name": "Launch Bot Test",
       "preLaunchTask": "tsc: build - tsconfig.json",
-      "program": "${workspaceFolder}/client/Trader/SerumMarket.ts",
+      "program": "${workspaceFolder}/client/Bot.ts",
       "outFiles": [
         "${workspaceFolder}/client/dist/**/*.js"
       ],
