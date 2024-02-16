@@ -12,13 +12,42 @@ export function findDumpingRecord(data: TradeRecord[], threshold: number = 50): 
   return null; // No dump detected
 }
 
-export type ChartTrend = 'GROWING' | 'DIPPING'
-export function determineTrend(data: TradeRecord[]): ChartTrend {
-  const recentData = data.slice(-14); // Last 14 data points, adjust as needed
-  const total = recentData.reduce((acc, val) => acc + val.priceInSOL, 0);
-  const average = total / recentData.length;
+export type ChartTrend = 'EQUILIBRIUM' | 'PUMPING' | 'DUMPING'
 
-  const trend: ChartTrend = recentData[recentData.length - 1].priceInSOL > average ? 'GROWING' : 'DIPPING';
-  return trend; // This is a very simplified way to determine the trend
+export function standardDeviation(values: number[]): number {
+  const avg = values.reduce((sum, value) => sum + value, 0) / values.length;
+  const squareDiffs = values.map(value => (value - avg) ** 2);
+  const avgSquareDiff = squareDiffs.reduce((sum, value) => sum + value, 0) / squareDiffs.length;
+  return Math.sqrt(avgSquareDiff);
 }
 
+const FAST_PRICE_CHANGING_RATE = 0.001
+const SAFE_VALOTILITY_RATE = 0.05
+
+export function analyzeTrend(data: TradeRecord[]): { trend: ChartTrend, averageGrowthRate: number, isVolatile: boolean } {
+  let growthRates: number[] = []
+  // Calculate growth rates between each pair of records
+  for (let i = 1; i < data.length; i++) {
+    const prevPrice = data[i - 1].priceInSOL;
+    const currentPrice = data[i].priceInSOL;
+    const growthRate = (currentPrice - prevPrice) / prevPrice;
+    growthRates.push(growthRate);
+  }
+
+  // Calculate average growth rate
+  const averageGrowthRate = growthRates.reduce((acc, rate) => acc + rate, 0) / growthRates.length;
+
+  // Calculate volatility (standard deviation of growth rates)
+  const volatility = standardDeviation(growthRates);
+
+  // Determine trend based on average growth rate and volatility
+
+  let trend: ChartTrend = 'EQUILIBRIUM'
+  if (averageGrowthRate >= FAST_PRICE_CHANGING_RATE) {
+    trend = 'PUMPING'
+  } else if (averageGrowthRate <= -FAST_PRICE_CHANGING_RATE) {
+    trend = 'DUMPING'
+  }
+
+  return { trend, averageGrowthRate, isVolatile: volatility > SAFE_VALOTILITY_RATE };
+}

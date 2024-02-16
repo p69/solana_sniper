@@ -47,6 +47,7 @@ async function tryParseLiquidityPoolInfo(connection: Connection, poolKeys: Liqui
 async function validateNewPool(mintTxId: string): Promise<PoolValidationResults | string> {
   try {
     const { poolKeys, mintTransaction } = await fetchPoolKeysForLPInitTransactionHash(mintTxId) // With poolKeys you can do a swap
+    //TODO: notify state listener
     const binaryPoolKeys = convertStringKeysToDataKeys(poolKeys)
     const info = await tryParseLiquidityPoolInfo(connection, binaryPoolKeys)
     if (info === null) {
@@ -61,6 +62,7 @@ async function validateNewPool(mintTxId: string): Promise<PoolValidationResults 
     const features: PoolFeatures = Liquidity.getEnabledFeatures(info);
 
     if (!features.swap) {
+      //TODO: notify state listener
       return {
         pool: poolKeys,
         poolInfo: info,
@@ -81,6 +83,17 @@ async function validateNewPool(mintTxId: string): Promise<PoolValidationResults 
         safetyStatus: 'RED',
         startTimeInEpoch: startTime,
         reason: `Couldn't verify safety. 'checkToken' fucntion failed`
+      }
+    }
+
+    if (safetyCheckResults.newTokensWereMintedDuringValidation) {
+      return {
+        pool: poolKeys,
+        poolInfo: info,
+        poolFeatures: features,
+        safetyStatus: 'RED',
+        startTimeInEpoch: startTime,
+        reason: `New tokens were minted during validation`
       }
     }
 

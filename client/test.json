@@ -1,62 +1,93 @@
 [
   {
-    "accountIndex": 5,
-    "mint": "8YuKKJwRyFCGcgN2N5WNx5GcjSRyKKQ8ZkMhxjTuPFYa",
-    "owner": "5Q544fKrFoe6tsEbD7S8EmxGTJYAKtTVhAW5Q5pge4j1",
-    "programId": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
-    "uiTokenAmount": {
-      "amount": "1000000000000000",
-      "decimals": 6,
-      "uiAmount": 1000000000,
-      "uiAmountString": "1000000000"
-    }
+    "index": 4,
+    "instructions": [
+      {
+        "parsed": {
+          "info": {
+            "extensionTypes": [
+              "immutableOwner"
+            ],
+            "mint": "AhTTDdWqwMJu3h8e6ugxbQTcjw1m8t3oSq9zq2FfEFoW"
+          },
+          "type": "getAccountDataSize"
+        },
+        "program": "spl-token",
+        "programId": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
+        "stackHeight": 2
+      },
+      {
+        "parsed": {
+          "info": {
+            "lamports": 2039280,
+            "newAccount": "BRqDFvQndhVmyE2M2ksc1ZymCPKZeQ6UPCYq9pPyAAju",
+            "owner": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
+            "source": "5cq1HURq8pagTHF58iHZxmLDeuemTpUx5JXnuUbq6Tx4",
+            "space": 165
+          },
+          "type": "createAccount"
+        },
+        "program": "system",
+        "programId": "11111111111111111111111111111111",
+        "stackHeight": 2
+      },
+      {
+        "parsed": {
+          "info": {
+            "account": "BRqDFvQndhVmyE2M2ksc1ZymCPKZeQ6UPCYq9pPyAAju"
+          },
+          "type": "initializeImmutableOwner"
+        },
+        "program": "spl-token",
+        "programId": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
+        "stackHeight": 2
+      },
+      {
+        "parsed": {
+          "info": {
+            "account": "BRqDFvQndhVmyE2M2ksc1ZymCPKZeQ6UPCYq9pPyAAju",
+            "mint": "AhTTDdWqwMJu3h8e6ugxbQTcjw1m8t3oSq9zq2FfEFoW",
+            "owner": "5cq1HURq8pagTHF58iHZxmLDeuemTpUx5JXnuUbq6Tx4"
+          },
+          "type": "initializeAccount3"
+        },
+        "program": "spl-token",
+        "programId": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
+        "stackHeight": 2
+      }
+    ]
   },
   {
-    "accountIndex": 6,
-    "mint": "So11111111111111111111111111111111111111112",
-    "owner": "5Q544fKrFoe6tsEbD7S8EmxGTJYAKtTVhAW5Q5pge4j1",
-    "programId": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
-    "uiTokenAmount": {
-      "amount": "1000000000000",
-      "decimals": 9,
-      "uiAmount": 1000,
-      "uiAmountString": "1000"
-    }
-  },
-  {
-    "accountIndex": 8,
-    "mint": "So11111111111111111111111111111111111111112",
-    "owner": "GThUX1Atko4tqhN2NaiTazWSeFWMuiUvfFnyJyUghFMJ",
-    "programId": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
-    "uiTokenAmount": {
-      "amount": "42002920000000",
-      "decimals": 9,
-      "uiAmount": 42002.92,
-      "uiAmountString": "42002.92"
-    }
-  },
-  {
-    "accountIndex": 9,
-    "mint": "8YuKKJwRyFCGcgN2N5WNx5GcjSRyKKQ8ZkMhxjTuPFYa",
-    "owner": "4zc1rPxyHpTj1iQVnMcgBW7bTvJVfQ7zD3fRDBYSbXM4",
-    "programId": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
-    "uiTokenAmount": {
-      "amount": "0",
-      "decimals": 6,
-      "uiAmount": null,
-      "uiAmountString": "0"
-    }
-  },
-  {
-    "accountIndex": 10,
-    "mint": "JC9FbVeK9nnnTb7QkzG1u3UnUpQqXszJqMEuKexQPmwG",
-    "owner": "4zc1rPxyHpTj1iQVnMcgBW7bTvJVfQ7zD3fRDBYSbXM4",
-    "programId": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
-    "uiTokenAmount": {
-      "amount": "31622775601683",
-      "decimals": 6,
-      "uiAmount": 31622775.601683,
-      "uiAmountString": "31622775.601683"
-    }
+    "index": 5,
+    "instructions": [
+      {
+        "parsed": {
+          "info": {
+            "amount": "6000000",
+            "authority": "5cq1HURq8pagTHF58iHZxmLDeuemTpUx5JXnuUbq6Tx4",
+            "destination": "4CLdfszjFVtJWeUwi4NG3gLQfvGxEhawkBPwNHVv18FA",
+            "source": "9mH7g4tScm6ebhATSDeMcYCHYDxgeHnkt9io1KeWRUdv"
+          },
+          "type": "transfer"
+        },
+        "program": "spl-token",
+        "programId": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
+        "stackHeight": 2
+      },
+      {
+        "parsed": {
+          "info": {
+            "amount": "390928946243",
+            "authority": "5Q544fKrFoe6tsEbD7S8EmxGTJYAKtTVhAW5Q5pge4j1",
+            "destination": "BRqDFvQndhVmyE2M2ksc1ZymCPKZeQ6UPCYq9pPyAAju",
+            "source": "HKUCxwzVUovFuqc28Y4eZCxooFmYLqJgpurPFVy3zt8r"
+          },
+          "type": "transfer"
+        },
+        "program": "spl-token",
+        "programId": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
+        "stackHeight": 2
+      }
+    ]
   }
 ]

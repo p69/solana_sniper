@@ -1,5 +1,7 @@
 import * as dotenv from 'dotenv'
 dotenv.config()
+import * as fs from 'fs'
+import * as util from 'util'
 import { Connection, PublicKey } from '@solana/web3.js';
 import path from 'path';
 import Piscina from 'piscina';
@@ -8,6 +10,28 @@ import chalk from 'chalk';
 import { ValidatePoolData } from './PoolValidator/RaydiumPoolValidator';
 import { PoolValidationResults } from './PoolValidator/ValidationResult';
 import { delay } from './Utils';
+// Specify the log file path
+const log_fil_sufix = 2
+const logFilePath = path.join(__dirname, `/logs/application_${log_fil_sufix}.log`)
+
+// Create a write stream for the log file
+const logFileStream = fs.createWriteStream(logFilePath, { flags: 'a' }); // 'a' flag for append mode
+
+// Original console.log function
+const originalConsoleLog = console.log;
+
+// Override console.log
+console.log = (...args: any[]) => {
+  // Format the message as console.log would
+  const message = util.format.apply(null, args) + '\n';
+
+  // Write to the original console.log
+  originalConsoleLog.apply(console, args);
+
+  // Write the formatted message to the log file
+  logFileStream.write(message);
+};
+
 
 const RAYDIUM_PUBLIC_KEY = '675kPX9MHTjS2zt1qfr1NYHuzeLXfQM9H24wFSUt1Mp8';
 
@@ -33,6 +57,7 @@ async function handleNewPoolMintTx(txId: string) {
   let validationResults: PoolValidationResults | string = await validatorPool.run(msg)
   if (typeof validationResults === `string`) {
     console.log(`Failed to validate with error: ${validationResults}`)
+    // Notify state listener onPoolValidationFailed
     return
   }
 
@@ -55,6 +80,7 @@ async function handleNewPoolMintTx(txId: string) {
 
   if (typeof validationResults === `string`) {
     console.log(`Failed to validate with error: ${validationResults}`)
+    // Notify state listener onPoolValidationFailed
     return
   }
 
@@ -62,6 +88,7 @@ async function handleNewPoolMintTx(txId: string) {
   console.log(JSON.stringify(validationResults.poolFeatures, null, 2))
   console.log(JSON.stringify(validationResults.safetyStatus, null, 2))
   console.log(JSON.stringify(validationResults.reason, null, 2))
+  // Notify state listener onPoolValidationCompleted
 
   if (validationResults.safetyStatus === 'RED') {
     console.log(chalk.red('Red token. Skipping'))

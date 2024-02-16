@@ -4,7 +4,7 @@ export interface ExitStrategy {
 }
 
 export const SAFE_EXIT_STRATEGY: ExitStrategy = {
-  exitTimeoutInMillis: 30 * 60 * 1000, // 10 minutes time when token looks good
+  exitTimeoutInMillis: 24 * 60 * 60 * 1000, // wait for 24 hours
   targetProfit: 4.9, // 500% (10% for slippage) to target, we must be early to 
 }
 

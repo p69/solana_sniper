@@ -5,7 +5,7 @@ import { BURN_ACC_ADDRESS } from './Addresses'
 import { KNOWN_SCAM_ACCOUNTS } from './BlackLists'
 import { BN } from "@project-serum/anchor";
 import chalk from 'chalk'
-import { delay } from '../Utils'
+import { delay, timeout } from '../Utils'
 import { connection } from './Connection'
 
 const RAYDIUM_OWNER_AUTHORITY = '5Q544fKrFoe6tsEbD7S8EmxGTJYAKtTVhAW5Q5pge4j1';
@@ -25,6 +25,7 @@ type LiquidityValue = {
 
 export type SafetyCheckResult = {
   creator: PublicKey,
+  newTokensWereMintedDuringValidation: boolean,
   totalLiquidity: LiquidityValue,
   lockedPercentOfLiqiodity: number,
   newTokenPoolBalancePercent: number,
@@ -58,8 +59,9 @@ export async function checkToken(tx: ParsedTransactionWithMeta, pool: LiquidityP
   const otherTokenInfo = await connection.getAccountInfo(otherTokenMint)
   const mintInfo = MintLayout.decode(otherTokenInfo!.data!.subarray(0, MINT_SIZE))
   const totalSupply = Number(mintInfo.supply) / (10 ** mintInfo.decimals)
-  const mintAuthority = mintInfo.mintAuthorityOption > 0 ? mintInfo.mintAuthority : null
+  let mintAuthority = mintInfo.mintAuthorityOption > 0 ? mintInfo.mintAuthority : null
   const freezeAuthority = mintInfo.freezeAuthorityOption > 0 ? mintInfo.freezeAuthority : null
+  let tokenSupplyIsNotChanged = true
 
   /// Check creators and authorities balances
   const calcOwnershipPercent = async (address: PublicKey) => {
@@ -74,6 +76,20 @@ export async function checkToken(tx: ParsedTransactionWithMeta, pool: LiquidityP
     authorityPercentage = await calcOwnershipPercent(mintAuthority)
   } else if (freezeAuthority) {
     authorityPercentage = await calcOwnershipPercent(freezeAuthority)
+  }
+
+  ///Check largest holders
+  /// Should Raydiium LP
+  const largestAccounts = await connection.getTokenLargestAccounts(otherTokenMint);
+  const raydiumTokenAccount = await connection.getParsedTokenAccountsByOwner(new PublicKey(RAYDIUM_OWNER_AUTHORITY), { mint: otherTokenMint });
+
+  let newTokenPoolBalancePercent = 0
+  if (largestAccounts.value.length > 0 && raydiumTokenAccount.value.length > 0) {
+    const poolAcc = raydiumTokenAccount.value[0].pubkey.toString()
+    const poolBalance = largestAccounts.value.find(x => x.address.toString() === poolAcc)
+    if (poolBalance) {
+      newTokenPoolBalancePercent = (poolBalance.uiAmount ?? 0) / totalSupply
+    }
   }
 
   /// Find LP-token minted by providing liquidity to the pool
@@ -104,13 +120,45 @@ export async function checkToken(tx: ParsedTransactionWithMeta, pool: LiquidityP
   if ((mintTxLPTokenBalance.uiTokenAmount.uiAmount ?? 0) <= 1) {
     percentLockedLP = 1
   } else {
-    percentLockedLP = await getPercentOfBurnedTokensWithRetry(
-      11, /// 4 attempts
-      30 * 1000, /// wait for 30 seconds before next retry
-      lpTokenAccount,
-      lpTokenMint,
-      mintTxLPTokenBalance
-    )
+    // If all tokens were transfered to the pool
+    // Verify burned LP tokens for few hours every 5 minutes
+    // Could be a gem
+    if (newTokenPoolBalancePercent >= 0.99) {
+      console.log(chalk.cyan(`All tokens are in pool, but LP tokens aren't burned yet. Start verifying it every 5 minutes`))
+      const updatedData = await checkMintAuthorityAndBurnedTokensOrTimeout(
+        mintAuthority?.toString() ?? null,
+        lpTokenAccount,
+        lpTokenMint,
+        mintTxLPTokenBalance,
+        otherTokenMint,
+        2 * 60 * 60 * 1000
+      )
+      if (updatedData !== null) {
+        if (updatedData.updatedSupply) {
+          tokenSupplyIsNotChanged = updatedData.updatedSupply === totalSupply
+        }
+        mintAuthority = updatedData.mint !== null ? new PublicKey(updatedData.mint) : null
+        percentLockedLP = updatedData.burnedLPPercent
+      } else {
+        percentLockedLP = 0
+      }
+    } else {
+      percentLockedLP = await getPercentOfBurnedTokensWithRetry(
+        11, /// 4 attempts
+        30 * 1000, /// wait for 30 seconds before next retry
+        lpTokenAccount,
+        lpTokenMint,
+        mintTxLPTokenBalance
+      )
+    }
+  }
+
+  /// Check if supply was changed during LP tokens validation
+  if (tokenSupplyIsNotChanged) {
+    const lastOtherTokenInfo = await connection.getAccountInfo(otherTokenMint)
+    const lastMintInfo = MintLayout.decode(lastOtherTokenInfo!.data!.subarray(0, MINT_SIZE))
+    const lastSupply = Number(lastMintInfo.supply) / (10 ** lastMintInfo.decimals)
+    tokenSupplyIsNotChanged = totalSupply === lastSupply
   }
 
   /// Get real liquiidity value
@@ -124,25 +172,10 @@ export async function checkToken(tx: ParsedTransactionWithMeta, pool: LiquidityP
 
   console.log(chalk.bgBlue(`Real Liquidity ${liquitity} ${symbol}`));
 
-
-  ///Check largest holders
-  /// Should Raydiium LP
-
-  const largestAccounts = await connection.getTokenLargestAccounts(otherTokenMint);
-  const raydiumTokenAccount = await connection.getParsedTokenAccountsByOwner(new PublicKey(RAYDIUM_OWNER_AUTHORITY), { mint: otherTokenMint });
-
-  let newTokenPoolBalancePercent = 0
-  if (largestAccounts.value.length > 0 && raydiumTokenAccount.value.length > 0) {
-    const poolAcc = raydiumTokenAccount.value[0].pubkey.toString()
-    const poolBalance = largestAccounts.value.find(x => x.address.toString() === poolAcc)
-    if (poolBalance) {
-      newTokenPoolBalancePercent = (poolBalance.uiAmount ?? 0) / totalSupply
-    }
-  }
-
   return {
     creator: creatorAddress,
     lockedPercentOfLiqiodity: percentLockedLP,
+    newTokensWereMintedDuringValidation: false,
     totalLiquidity: {
       amount: liquitity,
       amountInUSD,
@@ -164,6 +197,60 @@ function reduceBalancesToTokensSet(balances: TokenBalance[]): Set<string> {
     set.add(b.mint)
     return set
   }, result)
+}
+
+async function checkMintAuthorityAndBurnedTokensOrTimeout(
+  latestMintAuthority: string | null,
+  lpTokenAccount: PublicKey,
+  lpTokenMint: string,
+  mintTxLPTokenBalance: TokenBalance,
+  otherTokenMint: PublicKey,
+  timeoutInMillis: number,
+): Promise<{ mint: string | null, burnedLPPercent: number, updatedSupply: number | null } | null> {
+  try {
+    const results = await Promise.race([
+      checkMintAuthorityAndBurnedTokensInLoop(latestMintAuthority, lpTokenAccount, lpTokenMint, mintTxLPTokenBalance, otherTokenMint),
+      timeout(timeoutInMillis)
+    ])
+
+    return results
+  } catch (e) {
+    console.log(`Timeout happened during refreshing burned LP tokens percent`)
+    return null
+  }
+}
+
+async function checkMintAuthorityAndBurnedTokensInLoop(
+  latestMintAuthority: string | null,
+  lpTokenAccount: PublicKey,
+  lpTokenMint: string,
+  mintTxLPTokenBalance: TokenBalance,
+  otherTokenMint: PublicKey,
+  delayBetweenRetryesInMillis: number = 5 * 60 * 1000 // retry every 5 minutes
+): Promise<{ mint: string | null, burnedLPPercent: number, updatedSupply: number | null }> {
+  while (true) {
+    try {
+      const burnedPercent = await getPercentOfBurnedTokensWithRetry(1, 0, lpTokenAccount, lpTokenMint, mintTxLPTokenBalance)
+      if (burnedPercent < 0.99) {
+        await delay(delayBetweenRetryesInMillis)
+        continue
+      }
+
+      if (latestMintAuthority === null) {
+        return { mint: latestMintAuthority, burnedLPPercent: burnedPercent, updatedSupply: null }
+      }
+
+      const otherTokenInfo = await connection.getAccountInfo(otherTokenMint)
+      const mintInfo = MintLayout.decode(otherTokenInfo!.data!.subarray(0, MINT_SIZE))
+      const totalSupply = Number(mintInfo.supply) / (10 ** mintInfo.decimals)
+      const updatedMintAuthority = mintInfo.mintAuthorityOption > 0 ? mintInfo.mintAuthority : null
+      return { mint: updatedMintAuthority?.toString() ?? null, burnedLPPercent: burnedPercent, updatedSupply: totalSupply }
+    } catch (e) {
+      console.log(chalk.red(`Failed to update burned tokens percent and mint info. ${e}`))
+      console.log('Retrying')
+      await delay(delayBetweenRetryesInMillis)
+    }
+  }
 }
 
 async function getPercentOfBurnedTokensWithRetry(

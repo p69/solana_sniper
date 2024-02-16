@@ -9,7 +9,7 @@ import { connection } from './Connection'
 import { buyToken } from './BuyToken'
 import { getAssociatedTokenAddressSync, TOKEN_PROGRAM_ID } from '@solana/spl-token'
 import { SellResults, sellToken } from './SellToken'
-import { determineTrend, findDumpingRecord } from './TradesAnalyzer'
+import { findDumpingRecord } from './TradesAnalyzer'
 
 export type TraderResults = {
   boughtAmountInSOL: number | null,
@@ -28,6 +28,11 @@ async function tryPerformTrading(validationResults: PoolValidationResults): Prom
   if (validationResults.safetyStatus === 'RED') {
     console.log('RED token. Skipping')
     return { kind: 'FAILED', reason: 'RED coin', txId: null }
+  }
+
+  if (validationResults.safetyStatus === 'YELLOW') {
+    console.log('YELLOW token. Skipping')
+    return { kind: 'FAILED', reason: 'YELLOW coin', txId: null }
   }
 
   const pool = convertStringKeysToDataKeys(validationResults.pool)
