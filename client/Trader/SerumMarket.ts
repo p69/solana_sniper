@@ -1,15 +1,13 @@
 import * as dotenv from 'dotenv'
 dotenv.config()
-import { PublicKey } from '@solana/web3.js'
-import { getAssociatedTokenAddressSync } from '@solana/spl-token'
 import { connection } from './Connection'
-import { WSOL } from '@raydium-io/raydium-sdk';
 import fs from 'fs'
 import path from 'path'
 import csv from 'csv-parser'
 import { TradeRecord, TradeType, fetchLatestTrades } from './TradesFetcher'
 import { ChartTrend, analyzeTrend, findDumpingRecord } from './TradesAnalyzer'
 import { PoolKeys, fetchPoolKeysForLPInitTransactionHash } from '../PoolValidator/RaydiumPoolParser'
+import { config } from '../Config'
 
 const raydiumPoolAuthority = "5Q544fKrFoe6tsEbD7S8EmxGTJYAKtTVhAW5Q5pge4j1"
 
@@ -63,15 +61,14 @@ async function loadSaved() {
     if (dumpRes) {
       lastEpochTime = dumpRes[0].epochTime - 1
     }
-    const filteredRecords = records.filter(x => x.epochTime <= lastEpochTime && x.type === 'BUY' && x.priceInSOL <= 2)
 
-    const trend = analyzeTrend(filteredRecords)
-    console.log(`${poolId} - ${trendToColor(trend.trend, filteredRecords.length, trend.isVolatile)}, rate=${trend.averageGrowthRate}, valotily=${trend.isVolatile}`)
+    const trend = analyzeTrend(records)
+    console.log(`${poolId} - ${trendToColor(trend.type, trend.buysCount, trend.volatility)}, rate=${trend.averageGrowthRate}, volatility=${trend.volatility}`)
   }
 }
 
-function trendToColor(trend: ChartTrend, buysCount: number, isValotile: boolean): string {
-  if (isValotile || buysCount < 40) { return '🔴 Bad' }
+function trendToColor(trend: ChartTrend, buysCount: number, volatility: number): string {
+  if ((volatility > config.safePriceValotilityRate) || buysCount < config.safeBuysCountInFirstMinute) { return '🔴 Bad' }
   switch (trend) {
     case 'EQUILIBRIUM': return '🟢 Good' //'🟡 So So'
     case 'PUMPING': return '🟢 Good'
@@ -116,10 +113,7 @@ async function parseCSV(poolId: string): Promise<TradeRecord[]> {
 }
 
 async function getTradeRecords(poolKeys: PoolKeys): Promise<{ poolId: string, trades: TradeRecord[] }> {
-  const isTokenQuote = poolKeys.quoteMint !== WSOL.mint
-  const decimals = isTokenQuote ? poolKeys.quoteDecimals : poolKeys.baseDecimals
-  const tokenMint = isTokenQuote ? poolKeys.quoteMint : poolKeys.baseMint
-  const tradeRecords = await fetchLatestTrades(connection, poolKeys, new PublicKey(poolKeys.id), new PublicKey(tokenMint), decimals)
+  const tradeRecords = await fetchLatestTrades(connection, poolKeys)
   return { poolId: poolKeys.id, trades: tradeRecords }
 }
 

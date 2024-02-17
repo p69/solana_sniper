@@ -179,6 +179,7 @@ async function loopAndWaitForProfit(
   amountIn: TokenAmount,
   tokenOut: Token,
   poolKeys: LiquidityPoolKeysV4,
+  amountOutCalculationDelayMs: number,
   cancellationToken: { cancelled: boolean }
 ): Promise<number> {
   const STOP_LOSS_PERCENT = -0.5
@@ -186,7 +187,8 @@ async function loopAndWaitForProfit(
   let profitToTakeOrLose: number = 0;
   let prevAmountOut: number = 0;
   let priceDownCounter = 5;
-  while (priceDownCounter > 0 && profitToTakeOrLose < targetProfitPercentage && profitToTakeOrLose > STOP_LOSS_PERCENT) {
+  //priceDownCounter > 0 && 
+  while (profitToTakeOrLose < targetProfitPercentage && profitToTakeOrLose > STOP_LOSS_PERCENT) {
     if (cancellationToken.cancelled) {
       break;
     }
@@ -209,10 +211,10 @@ async function loopAndWaitForProfit(
         prevAmountOut = currentAmountOut;
       }
       console.log(chalk.bold(`Profit to take: ${profitToTakeOrLose}. PriceDownCounter: ${priceDownCounter}`));
-      await delay(500);
+      await delay(amountOutCalculationDelayMs);
     } catch (e) {
       console.log(`${chalk.red(`Failed to profit with error: ${e}`)}`);
-      await delay(500);
+      await delay(amountOutCalculationDelayMs);
     }
   }
 
@@ -226,13 +228,14 @@ export async function waitForProfitOrTimeout(
   amountIn: TokenAmount,
   tokenOut: Token,
   poolKeys: LiquidityPoolKeysV4,
+  profitCalculationIterationDelayMs: number,
   timeutInMillis: number
 ): Promise<number> {
   let lastProfitToTake: number = 0;
   const cancellationToken = { cancelled: false }
   try {
     lastProfitToTake = await Promise.race([
-      loopAndWaitForProfit(spentAmount, targetProfitPercentage, connection, amountIn, tokenOut, poolKeys, cancellationToken),
+      loopAndWaitForProfit(spentAmount, targetProfitPercentage, connection, amountIn, tokenOut, poolKeys, profitCalculationIterationDelayMs, cancellationToken),
       timeout(timeutInMillis, cancellationToken)
     ])
   } catch (e) {

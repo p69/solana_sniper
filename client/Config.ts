@@ -9,6 +9,7 @@ interface Config {
   rpcWsURL: string,
   simulateOnly: boolean,
   safePriceValotilityRate: number,
+  safeBuysCountInFirstMinute: number,
   allowedTradingSafety: Set<TokenSafetyStatus>,
   walletPublic: string,
   walletPrivate: string
@@ -19,6 +20,7 @@ export const config: Config = {
   rpcWsURL: process.env.WS_URL!,
   simulateOnly: process.env.SIMULATION_ONLY! === 'true',
   safePriceValotilityRate: process.env.SAFE_PRICE_VALOTILITY_RATE ? Number(process.env.SAFE_PRICE_VALOTILITY_RATE) : SAFE_VALOTILITY_RATE,
+  safeBuysCountInFirstMinute: process.env.SAFE_BUYS_COUNT_IN_FIRST_MINUTE ? Number(process.env.SAFE_BUYS_COUNT_IN_FIRST_MINUTE) : 40,
   allowedTradingSafety: new Set(['GREEN', 'YELLOW']),
   walletPublic: process.env.WALLET_PUBLIC_KEY!,
   walletPrivate: process.env.WALLET_PRIVATE_KEY!

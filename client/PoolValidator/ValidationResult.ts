@@ -1,5 +1,6 @@
 import { LiquidityPoolInfo } from "@raydium-io/raydium-sdk"
 import { PoolKeys } from "./RaydiumPoolParser"
+import { TrendAnalisis } from "../Trader/TradesAnalyzer"
 
 export type PoolFeatures = {
   swap: boolean,
@@ -13,6 +14,7 @@ export type PoolValidationResults = {
   poolFeatures: PoolFeatures,
   safetyStatus: TokenSafetyStatus,
   startTimeInEpoch: number | null,
+  trend: TrendAnalisis | null,
   reason: string
 }
 

@@ -164,6 +164,20 @@ export async function retryAsyncFunction<T, Args extends any[]>(
   throw lastError;
 }
 
+export async function retryAsyncFunctionOrDefault<T, Args extends any[]>(
+  fn: (...args: Args) => Promise<T>, // Async function to retry
+  args: Args,                        // Arguments of the async function
+  defaultValue: T,                       // Default value if all attempts failed
+  retries: number = 5,               // Number of retries
+  delay: number = 300               // Delay between retries in milliseconds
+): Promise<T> {
+  try {
+    return retryAsyncFunction(fn, args, retries, delay)
+  } catch {
+    return defaultValue
+  }
+}
+
 export function convertStringKeysToDataKeys(poolInfo: PoolKeys): LiquidityPoolKeysV4 {
   return {
     id: new PublicKey(poolInfo.id),

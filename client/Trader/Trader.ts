@@ -1,10 +1,10 @@
 import { PoolValidationResults, TokenSafetyStatus } from '../PoolValidator/ValidationResult'
 import { GeneralTokenCondition } from '../Swap'
-import { LiquidityPoolKeysV4, Token, TokenAmount, WSOL } from '@raydium-io/raydium-sdk'
+import { Token, TokenAmount, WSOL } from '@raydium-io/raydium-sdk'
 import { SOL_SPL_TOKEN_ADDRESS, PAYER, OWNER_ADDRESS } from "./Addresses"
 import { DANGEROUS_EXIT_STRATEGY, ExitStrategy, RED_TEST_EXIT_STRATEGY, SAFE_EXIT_STRATEGY } from './ExitStrategy'
-import { TradeRecord, fetchLatestTrades } from './TradesFetcher'
-import { convertStringKeysToDataKeys, retryAsyncFunction } from '../Utils'
+import { TradeRecord } from './TradesFetcher'
+import { convertStringKeysToDataKeys } from '../Utils'
 import { connection } from './Connection'
 import { buyToken } from './BuyToken'
 import { getAssociatedTokenAddressSync, TOKEN_PROGRAM_ID } from '@solana/spl-token'
@@ -30,11 +30,6 @@ async function tryPerformTrading(validationResults: PoolValidationResults): Prom
     return { kind: 'FAILED', reason: 'RED coin', txId: null }
   }
 
-  if (validationResults.safetyStatus === 'YELLOW') {
-    console.log('YELLOW token. Skipping')
-    return { kind: 'FAILED', reason: 'YELLOW coin', txId: null }
-  }
-
   const pool = convertStringKeysToDataKeys(validationResults.pool)
 
   let tokenAMint = pool.baseMint.toString() === WSOL.mint ? pool.baseMint : pool.quoteMint;
@@ -49,32 +44,6 @@ async function tryPerformTrading(validationResults: PoolValidationResults): Prom
     console.log(`No SOL in pair. Skip swapping.`);
     return { kind: 'FAILED', reason: 'No SOL in pair', txId: null }
   }
-
-  let tradesHistory: TradeRecord[] = []
-  try {
-    tradesHistory = await retryAsyncFunction(fetchLatestTrades, [connection, pool.id, tokenBMint, tokenBDecimals])
-  } catch (e) {
-    console.log(`Failed to fetch trading history ${e}`)
-    return { kind: 'FAILED', reason: `Failed to fetch trading history ${e}`, txId: null }
-  }
-
-  if (tradesHistory.length === 0) {
-    //TODO: Handle errors
-    return { kind: 'FAILED', reason: `Tradiing history is empty`, txId: null }
-  }
-
-  const dumpCheckRes = findDumpingRecord(tradesHistory)
-  if (dumpCheckRes !== null) {
-    const [tr1, tr2] = dumpCheckRes
-    return { kind: 'FAILED', reason: `Already dumped. Dump txs: ${tr1.signature}, ${tr2.signature}`, txId: null }
-  }
-
-  /// Remove trend for now
-  // const trend = determineTrend(tradesHistory)
-  // if (trend === 'DIPPING' && validationResults.safetyStatus === 'YELLOW') {
-  //   console.log('Dipping trend for yellow coin. Skipping')
-  //   return { kind: 'FAILED', reason: `Dipping trend for yellow coin`, txId: null }
-  // }
 
   const buyAmount = getBuyAmountInSOL(validationResults.safetyStatus)!
   const exitStrategy = getExitStrategy(validationResults.safetyStatus)!
@@ -101,15 +70,15 @@ async function tryPerformTrading(validationResults: PoolValidationResults): Prom
 
 function getBuyAmountInSOL(tokenStatus: TokenSafetyStatus): number | null {
   switch (tokenStatus) {
-    case 'RED': return 0.01
-    case 'YELLOW': return 0.1
+    case 'RED': return null
+    case 'YELLOW': return 0.2
     case 'GREEN': return 0.3
   }
 }
 
 function getExitStrategy(tokenStatus: TokenSafetyStatus): ExitStrategy | null {
   switch (tokenStatus) {
-    case 'RED': return RED_TEST_EXIT_STRATEGY
+    case 'RED': return null
     case 'YELLOW': return DANGEROUS_EXIT_STRATEGY
     case 'GREEN': return SAFE_EXIT_STRATEGY
   }

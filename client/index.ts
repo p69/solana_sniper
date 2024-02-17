@@ -126,6 +126,7 @@ async function sellShitcoin(
     amountToSell,
     WSOL_TOKEN,
     poolInfo,
+    500,
     poolWithStrategy.exitTimeoutInMillis);
 
   const swapStartDate = new Date();

@@ -1,5 +1,4 @@
 import { PublicKey, ParsedTransactionWithMeta, Connection, ParsedAccountData } from '@solana/web3.js'
-import { getAssociatedTokenAddressSync } from "@solana/spl-token"
 import { WSOL } from '@raydium-io/raydium-sdk'
 import { PoolKeys } from '../PoolValidator/RaydiumPoolParser'
 
@@ -27,12 +26,12 @@ interface SPLTransferInfo {
 
 export async function fetchLatestTrades(
   connection: Connection,
-  poolKeys: PoolKeys,
-  tradingPoolAddress: PublicKey,
-  tokenMint: PublicKey,
-  tokenDecimals: number): Promise<TradeRecord[]> {
-  const txs = await fetchAllTransactions(connection, tradingPoolAddress)
-  const tradeRecords = await parseTradingData(connection, poolKeys, txs, tokenMint, tokenDecimals)
+  poolKeys: PoolKeys): Promise<TradeRecord[]> {
+  const isTokenBase = poolKeys.quoteMint === WSOL.mint
+  const tokenMintAddress = isTokenBase ? poolKeys.baseMint : poolKeys.quoteMint
+  const tokenDecimals = isTokenBase ? poolKeys.baseDecimals : poolKeys.quoteDecimals
+  const txs = await fetchAllTransactions(connection, new PublicKey(poolKeys.id))
+  const tradeRecords = await parseTradingData(connection, poolKeys, txs, new PublicKey(tokenMintAddress), tokenDecimals)
   return tradeRecords
 }
 

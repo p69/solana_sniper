@@ -41,6 +41,7 @@ export async function sellToken(
     amountToSell,
     WSOL_TOKEN,
     pool,
+    exitStrategy.profitCalcIterationDelayMillis,
     exitStrategy.exitTimeoutInMillis)
 
   let { confirmedTxId, error } = await sellAndConfirm(connection, pool, mainTokenAccountAddress, shitcoinAccountAddress, amountToSell)
