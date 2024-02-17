@@ -1,5 +1,3 @@
-import * as dotenv from 'dotenv'
-dotenv.config()
 import * as fs from 'fs'
 import * as util from 'util'
 import { Connection, PublicKey } from '@solana/web3.js';
@@ -10,6 +8,7 @@ import chalk from 'chalk';
 import { ValidatePoolData } from './PoolValidator/RaydiumPoolValidator';
 import { PoolValidationResults } from './PoolValidator/ValidationResult';
 import { delay } from './Utils';
+import { config } from './Config';
 // Specify the log file path
 const log_fil_sufix = 2
 const logFilePath = path.join(__dirname, `/logs/application_${log_fil_sufix}.log`)
@@ -107,8 +106,8 @@ async function main() {
   // return;
   /* Uncomment to perform single buy/sell test with predifined pool */
 
-  const connection = new Connection(process.env.RPC_URL!, {
-    wsEndpoint: process.env.WS_URL!
+  const connection = new Connection(config.rpcHttpURL, {
+    wsEndpoint: config.rpcWsURL
   })
 
   const raydium = new PublicKey(RAYDIUM_PUBLIC_KEY);
