@@ -1,4 +1,3 @@
-import { parentPort } from 'worker_threads'
 import { PoolValidationResults, PoolFeatures, TokenSafetyStatus } from './ValidationResult'
 import { fetchPoolKeysForLPInitTransactionHash } from './RaydiumPoolParser'
 import { Liquidity, LiquidityPoolInfo, LiquidityPoolKeysV4, LiquidityPoolStatus } from '@raydium-io/raydium-sdk'
@@ -46,7 +45,7 @@ async function tryParseLiquidityPoolInfo(connection: Connection, poolKeys: Liqui
 
 async function validateNewPool(mintTxId: string): Promise<PoolValidationResults | string> {
   try {
-    const { poolKeys, mintTransaction } = await fetchPoolKeysForLPInitTransactionHash(mintTxId) // With poolKeys you can do a swap
+    const { poolKeys, mintTransaction } = await fetchPoolKeysForLPInitTransactionHash(connection, mintTxId) // With poolKeys you can do a swap
     //TODO: notify state listener
     const binaryPoolKeys = convertStringKeysToDataKeys(poolKeys)
     const info = await tryParseLiquidityPoolInfo(connection, binaryPoolKeys)

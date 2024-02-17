@@ -22,7 +22,7 @@ export function standardDeviation(values: number[]): number {
 }
 
 const FAST_PRICE_CHANGING_RATE = 0.001
-const SAFE_VALOTILITY_RATE = 0.05
+const SAFE_VALOTILITY_RATE = 0.5
 
 export function analyzeTrend(data: TradeRecord[]): { trend: ChartTrend, averageGrowthRate: number, isVolatile: boolean } {
   let growthRates: number[] = []

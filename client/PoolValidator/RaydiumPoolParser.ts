@@ -54,10 +54,10 @@ export function findLogEntry(needle: string, logEntries: Array<string>): string 
   return null;
 }
 
-export async function fetchPoolKeysForLPInitTransactionHash(txSignature: string)
+export async function fetchPoolKeysForLPInitTransactionHash(connection: Connection, txSignature: string)
   : Promise<{ poolKeys: PoolKeys, mintTransaction: ParsedTransactionWithMeta }> {
   console.log(chalk.yellow(`Fetching TX inf ${txSignature}`));
-  const tx = await retryGetParsedTransaction(txSignature, 5)
+  const tx = await retryGetParsedTransaction(connection, txSignature, 5)
   if (!tx) {
     throw new Error('Failed to fetch transaction with signature ' + txSignature);
   }
@@ -95,6 +95,7 @@ export async function fetchPoolKeysForLPInitTransactionHash(txSignature: string)
 }
 
 async function retryGetParsedTransaction(
+  connection: Connection,
   txSignature: string,
   maxAttempts: number,
   delayMs: number = 200,
@@ -109,7 +110,7 @@ async function retryGetParsedTransaction(
     } else if (attempt < maxAttempts) {
       console.log(`Attempt ${attempt} failed, retrying...`)
       await delay(delayMs) // Wait for the specified delay
-      return retryGetParsedTransaction(txSignature, maxAttempts, delayMs, attempt + 1);
+      return retryGetParsedTransaction(connection, txSignature, maxAttempts, delayMs, attempt + 1);
     } else {
       console.log('Max attempts reached, returning null');
       return null; // Return null if max attempts are reached
@@ -118,7 +119,7 @@ async function retryGetParsedTransaction(
     console.error(`Attempt ${attempt} failed with error: ${error}, retrying...`);
     if (attempt < maxAttempts) {
       await delay(delayMs) // Wait for the specified delay // Wait for the specified delay before retrying
-      return retryGetParsedTransaction(txSignature, maxAttempts, delayMs, attempt + 1);
+      return retryGetParsedTransaction(connection, txSignature, maxAttempts, delayMs, attempt + 1);
     } else {
       console.log('Max attempts reached, returning null');
       return null; // Return null if max attempts are reached

@@ -1,6 +1,7 @@
 import { PublicKey, ParsedTransactionWithMeta, Connection, ParsedAccountData } from '@solana/web3.js'
 import { getAssociatedTokenAddressSync } from "@solana/spl-token"
 import { WSOL } from '@raydium-io/raydium-sdk'
+import { PoolKeys } from '../PoolValidator/RaydiumPoolParser'
 
 
 export type TradeType = 'BUY' | 'SELL'
@@ -26,18 +27,36 @@ interface SPLTransferInfo {
 
 export async function fetchLatestTrades(
   connection: Connection,
+  poolKeys: PoolKeys,
   tradingPoolAddress: PublicKey,
   tokenMint: PublicKey,
-  tokenDecimals: number,
-  limit: number = 1000): Promise<TradeRecord[]> {
-  const allTransactions = await connection.getConfirmedSignaturesForAddress2(tradingPoolAddress, { limit: limit })
-  const filtered = allTransactions.filter(x => !x.err)
-  const trades = await connection.getParsedTransactions(filtered.map(x => x.signature), { maxSupportedTransactionVersion: 0 })
-  return await parseTradingData(connection, trades, tokenMint, tokenDecimals)
+  tokenDecimals: number): Promise<TradeRecord[]> {
+  const txs = await fetchAllTransactions(connection, tradingPoolAddress)
+  const tradeRecords = await parseTradingData(connection, poolKeys, txs, tokenMint, tokenDecimals)
+  return tradeRecords
+}
+
+async function fetchAllTransactions(connection: Connection, address: PublicKey): Promise<ParsedTransactionWithMeta[]> {
+  let results: ParsedTransactionWithMeta[] = []
+  let hasMore = true
+  const limit = 1000
+  let beforeTx: string | undefined = undefined
+  while (hasMore) {
+    const fetchedIds = await connection.getConfirmedSignaturesForAddress2(address, { limit: limit, before: beforeTx })
+    if (fetchedIds.length === 0) { break }
+    const filtered = fetchedIds.filter(x => !x.err)
+    const tradesOrNull = await connection.getParsedTransactions(filtered.map(x => x.signature), { maxSupportedTransactionVersion: 0 })
+    const trades: ParsedTransactionWithMeta[] = tradesOrNull.filter((transaction): transaction is ParsedTransactionWithMeta => transaction !== null);
+    results.push(...trades)
+    hasMore = fetchedIds.length === limit
+    beforeTx = fetchedIds[fetchedIds.length - 1].signature
+  }
+  return results
 }
 
 async function parseTradingData(
   connection: Connection,
+  poolKeys: PoolKeys,
   transactions: (ParsedTransactionWithMeta | null)[],
   tokenMint: PublicKey,
   tokenDecimals: number): Promise<TradeRecord[]> {
@@ -86,15 +105,10 @@ async function parseTradingData(
       const outInfo: SPLTransferInfo = (splTransferPair[1] as any).parsed.info
 
       // TODO: improve
-      const destinationAccInfo = (await connection.getParsedAccountInfo(new PublicKey(inInfo.destination))).value
-      if (!destinationAccInfo) {
-        continue
-      }
-      if (!isParsedAccountData(destinationAccInfo.data)) {
-        continue
-      }
-      const destinationTokenMint = destinationAccInfo.data.parsed.info.mint
-      const isSelling = destinationTokenMint === tokenMint.toString()  //userOtherTokenPostBalance < userOtherTokenPreBalance
+
+      const quoteIsToken = poolKeys.quoteMint === tokenMint.toString()
+
+      const isSelling = quoteIsToken ? inInfo.destination === poolKeys.quoteVault : inInfo.destination === poolKeys.baseVault  //userOtherTokenPostBalance < userOtherTokenPreBalance
       const txDate = new Date(0)
       txDate.setUTCSeconds(txOrNull.blockTime ?? 0)
 
