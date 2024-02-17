@@ -5,9 +5,9 @@ export interface ExitStrategy {
 }
 
 export const SAFE_EXIT_STRATEGY: ExitStrategy = {
-  exitTimeoutInMillis: 24 * 60 * 60 * 1000, // wait for 24 hours
-  targetProfit: 2.9, // 300% (10% for slippage) to target, we must be early to
-  profitCalcIterationDelayMillis: 10 * 1000 // 10 seconds
+  exitTimeoutInMillis: 30 * 60 * 1000, // wait for 30 minutes
+  targetProfit: 0.29, // 30% (1% for slippage) to target
+  profitCalcIterationDelayMillis: 500 // 0.5 seconds
 }
 
 export const DANGEROUS_EXIT_STRATEGY: ExitStrategy = {
