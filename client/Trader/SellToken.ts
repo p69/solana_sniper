@@ -4,18 +4,24 @@ import { LiquidityPoolKeysV4, TokenAmount, WSOL } from "@raydium-io/raydium-sdk"
 import { PAYER, WSOL_TOKEN } from "./Addresses";
 import { swapTokens, waitForProfitOrTimeout } from "../Swap";
 import chalk from "chalk";
-import { delay, getTransactionConfirmation, retryAsyncFunction } from "../Utils";
+import { delay, formatDate, getTransactionConfirmation, retryAsyncFunction } from "../Utils";
+import { config } from "../Config";
 
-interface SellSuccess {
+type SellSuccess = {
   kind: 'SUCCESS',
   txId: string,
+  buyTime: string,
+  sellTime: string,
+  boughtForSol: number,
   soldForSOL: number,
   estimatedProfit: number,
   profit: number
 }
 
-interface SellFailure {
+type SellFailure = {
   kind: 'FAILED',
+  buyTime: string | null,
+  boughtForSol: number | null,
   txId: string | null,
   reason: string
 }
@@ -44,28 +50,35 @@ export async function sellToken(
     exitStrategy.profitCalcIterationDelayMillis,
     exitStrategy.exitTimeoutInMillis)
 
-  let { confirmedTxId, error } = await sellAndConfirm(connection, pool, mainTokenAccountAddress, shitcoinAccountAddress, amountToSell)
+  let soldForSOLAmount: number = estimatedProfit.amountOut
+  let finalProfit: number = estimatedProfit.profit
+  if (config.simulateOnly) {
+    const sellDate = new Date()
+    return { kind: 'SUCCESS', txId: 'Simulation', soldForSOL: soldForSOLAmount, estimatedProfit: estimatedProfit.profit, profit: finalProfit, boughtForSol: spentAmount, sellTime: formatDate(sellDate), buyTime: '' }
+  } else {
+    let { confirmedTxId, error } = await sellAndConfirm(connection, pool, mainTokenAccountAddress, shitcoinAccountAddress, amountToSell)
 
-  if (confirmedTxId === null) {
-    console.log(`Failed to sell with error ${error}`)
-    console.log('Retry')
-    const retryResults = await sellAndConfirm(connection, pool, mainTokenAccountAddress, shitcoinAccountAddress, amountToSell)
-    confirmedTxId = retryResults.confirmedTxId
-    error = retryResults.error
+    if (confirmedTxId === null) {
+      console.log(`Failed to sell with error ${error}`)
+      console.log('Retry')
+      const retryResults = await sellAndConfirm(connection, pool, mainTokenAccountAddress, shitcoinAccountAddress, amountToSell)
+      confirmedTxId = retryResults.confirmedTxId
+      error = retryResults.error
+    }
+
+    if (confirmedTxId === null) {
+      console.log(`Failed to retry sell with error ${error}`)
+      console.log(`Stopping`)
+      return { kind: 'FAILED', txId: confirmedTxId, reason: error ?? 'Unknown', buyTime: '', boughtForSol: spentAmount }
+    }
+
+    const sellDate = new Date()
+
+    console.log(`Selling transaction ${chalk.green('CONFIRMED')}. https://solscan.io/tx/${confirmedTxId}`);
+    soldForSOLAmount = await getSOLAmount(connection, confirmedTxId)
+    finalProfit = (soldForSOLAmount - spentAmount) / spentAmount
+    return { kind: 'SUCCESS', txId: confirmedTxId, soldForSOL: soldForSOLAmount, estimatedProfit: estimatedProfit.profit, profit: finalProfit, boughtForSol: spentAmount, sellTime: formatDate(sellDate), buyTime: '' }
   }
-
-  if (confirmedTxId === null) {
-    console.log(`Failed to retry sell with error ${error}`)
-    console.log(`Stopping`)
-    return { kind: 'FAILED', txId: confirmedTxId, reason: error ?? 'Unknown' }
-  }
-
-  console.log(`Selling transaction ${chalk.green('CONFIRMED')}. https://solscan.io/tx/${confirmedTxId}`);
-
-  const soldForSOLAmount = await getSOLAmount(connection, confirmedTxId)
-  const finalProfit = (soldForSOLAmount - spentAmount) / spentAmount
-
-  return { kind: 'SUCCESS', txId: confirmedTxId, soldForSOL: soldForSOLAmount, estimatedProfit, profit: finalProfit }
 }
 
 

@@ -181,7 +181,7 @@ async function loopAndWaitForProfit(
   poolKeys: LiquidityPoolKeysV4,
   amountOutCalculationDelayMs: number,
   cancellationToken: { cancelled: boolean }
-): Promise<number> {
+): Promise<{ amountOut: number, profit: number }> {
   const STOP_LOSS_PERCENT = -0.5
 
   let profitToTakeOrLose: number = 0;
@@ -218,7 +218,7 @@ async function loopAndWaitForProfit(
     }
   }
 
-  return profitToTakeOrLose;
+  return { amountOut: prevAmountOut, profit: profitToTakeOrLose };
 }
 
 export async function waitForProfitOrTimeout(
@@ -230,19 +230,22 @@ export async function waitForProfitOrTimeout(
   poolKeys: LiquidityPoolKeysV4,
   profitCalculationIterationDelayMs: number,
   timeutInMillis: number
-): Promise<number> {
-  let lastProfitToTake: number = 0;
+): Promise<{ amountOut: number, profit: number }> {
+  let lastProfitToTake: number = 0
+  let amountOut: number = 0
   const cancellationToken = { cancelled: false }
   try {
-    lastProfitToTake = await Promise.race([
+    const calcResults = await Promise.race([
       loopAndWaitForProfit(spentAmount, targetProfitPercentage, connection, amountIn, tokenOut, poolKeys, profitCalculationIterationDelayMs, cancellationToken),
       timeout(timeutInMillis, cancellationToken)
     ])
+    lastProfitToTake = calcResults.profit
+    amountOut = calcResults.amountOut
   } catch (e) {
     console.log(`Timeout happened ${chalk.bold('Profit to take: ')} ${lastProfitToTake < 0 ? chalk.red(lastProfitToTake) : chalk.green(lastProfitToTake)}`);
   }
   console.log(`Fixing profit ${chalk.bold('Profit to take: ')} ${lastProfitToTake < 0 ? chalk.red(lastProfitToTake) : chalk.green(lastProfitToTake)}`);
-  return lastProfitToTake
+  return { amountOut, profit: lastProfitToTake }
 }
 
 export async function validateTradingTrendOrTimeout(

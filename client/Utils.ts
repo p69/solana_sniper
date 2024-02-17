@@ -116,9 +116,9 @@ export async function makeTokenAccount() {
   //splToken.createAssociatedTokenAccountIdempotent
 }
 
-export function lamportsToSOLNumber(lamportsBN: BN): number | undefined {
-  const SOL_DECIMALS = 9; // SOL has 9 decimal places
-  const divisor = new BN(10).pow(new BN(SOL_DECIMALS));
+export function lamportsToSOLNumber(lamportsBN: BN, decimals: number = 9): number | undefined {
+  //const SOL_DECIMALS = 9; // SOL has 9 decimal places
+  const divisor = new BN(10).pow(new BN(decimals));
 
   // Convert lamports to SOL as a BN to maintain precision
   const solBN = lamportsBN.div(divisor);
@@ -129,7 +129,7 @@ export function lamportsToSOLNumber(lamportsBN: BN): number | undefined {
   // Convert integer part to number
   if (solBN.lte(new BN(Number.MAX_SAFE_INTEGER))) {
     const integerPart = solBN.toNumber();
-    const fractionalPart = fractionalBN.toNumber() / Math.pow(10, SOL_DECIMALS);
+    const fractionalPart = fractionalBN.toNumber() / Math.pow(10, decimals);
 
     // Combine integer and fractional parts
     const total = integerPart + fractionalPart;

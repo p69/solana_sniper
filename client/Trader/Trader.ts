@@ -4,7 +4,7 @@ import { Token, TokenAmount, WSOL } from '@raydium-io/raydium-sdk'
 import { SOL_SPL_TOKEN_ADDRESS, PAYER, OWNER_ADDRESS } from "./Addresses"
 import { DANGEROUS_EXIT_STRATEGY, ExitStrategy, RED_TEST_EXIT_STRATEGY, SAFE_EXIT_STRATEGY } from './ExitStrategy'
 import { TradeRecord } from './TradesFetcher'
-import { convertStringKeysToDataKeys } from '../Utils'
+import { convertStringKeysToDataKeys, formatDate } from '../Utils'
 import { connection } from './Connection'
 import { buyToken } from './BuyToken'
 import { getAssociatedTokenAddressSync, TOKEN_PROGRAM_ID } from '@solana/spl-token'
@@ -27,7 +27,7 @@ module.exports = async (data: PoolValidationResults) => {
 async function tryPerformTrading(validationResults: PoolValidationResults): Promise<SellResults> {
   if (validationResults.safetyStatus === 'RED') {
     console.log('RED token. Skipping')
-    return { kind: 'FAILED', reason: 'RED coin', txId: null }
+    return { kind: 'FAILED', reason: 'RED coin', txId: null, boughtForSol: null, buyTime: null }
   }
 
   const pool = convertStringKeysToDataKeys(validationResults.pool)
@@ -42,21 +42,22 @@ async function tryPerformTrading(validationResults: PoolValidationResults): Prom
 
   if (pool.quoteMint.toString() !== WSOL.mint && pool.baseMint.toString() !== WSOL.mint) {
     console.log(`No SOL in pair. Skip swapping.`);
-    return { kind: 'FAILED', reason: 'No SOL in pair', txId: null }
+    return { kind: 'FAILED', reason: 'No SOL in pair', txId: null, boughtForSol: null, buyTime: null }
   }
 
   const buyAmount = getBuyAmountInSOL(validationResults.safetyStatus)!
   const exitStrategy = getExitStrategy(validationResults.safetyStatus)!
 
   const buyResult = await buyToken(connection, PAYER, buyAmount, tokenBToken, tokenBAccountAddress, pool, SOL_SPL_TOKEN_ADDRESS)
+  const buyDate = new Date()
 
   if (buyResult.kind !== 'SUCCESS') {
     //TODO: Handle errors
-    return { kind: 'FAILED', reason: `Buy transaction failed`, txId: null }
+    return { kind: 'FAILED', reason: `Buy transaction failed`, txId: null, buyTime: formatDate(buyDate), boughtForSol: null }
   }
 
   const amountToSell = new TokenAmount(tokenBToken, buyResult.newTokenAmount, false)
-  const sellResults = await sellToken(
+  let sellResults = await sellToken(
     connection,
     buyAmount,
     amountToSell,
@@ -64,7 +65,7 @@ async function tryPerformTrading(validationResults: PoolValidationResults): Prom
     SOL_SPL_TOKEN_ADDRESS,
     tokenBAccountAddress,
     exitStrategy)
-
+  sellResults.buyTime = formatDate(buyDate)
   return sellResults
 }
 

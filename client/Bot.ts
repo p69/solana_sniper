@@ -7,10 +7,11 @@ import { findLogEntry } from './PoolValidator/RaydiumPoolParser';
 import chalk from 'chalk';
 import { ValidatePoolData } from './PoolValidator/RaydiumPoolValidator';
 import { PoolValidationResults } from './PoolValidator/ValidationResult';
-import { delay } from './Utils';
+import { delay, formatDate } from './Utils';
 import { config } from './Config';
+import { SellResults } from './Trader/SellToken';
 // Specify the log file path
-const log_fil_sufix = 2
+const log_fil_sufix = 3
 const logFilePath = path.join(__dirname, `/logs/application_${log_fil_sufix}.log`)
 
 // Create a write stream for the log file
@@ -30,6 +31,16 @@ console.log = (...args: any[]) => {
   // Write the formatted message to the log file
   logFileStream.write(message);
 };
+
+const mainActionsLogFilePath = path.join(__dirname, `/logs/actions.log`)
+const mainActionslogFileStream = fs.createWriteStream(mainActionsLogFilePath, { flags: 'a' }); // 'a' flag for append mode
+const logAction = (...args: any[]) => {
+  const formattedTime = formatDate(new Date())
+  // Format the message as console.log would
+  const message = util.format.apply(null, args) + '\n';
+  // Write the formatted message to the log file
+  mainActionslogFileStream.write(`[${formattedTime}]: ${message}`);
+}
 
 
 const RAYDIUM_PUBLIC_KEY = '675kPX9MHTjS2zt1qfr1NYHuzeLXfQM9H24wFSUt1Mp8';
@@ -53,9 +64,13 @@ async function handleNewPoolMintTx(txId: string) {
     date: new Date()
   }
 
+  logAction(`Received first mint tx https://solscan.io/tx/${txId}`)
+
   let validationResults: PoolValidationResults | string = await validatorPool.run(msg)
   if (typeof validationResults === `string`) {
     console.log(`Failed to validate with error: ${validationResults}`)
+    logAction(`Failed to validate pool by first min tx https://solscan.io/tx/${txId}`)
+    logAction(`Error: ${validationResults}`)
     // Notify state listener onPoolValidationFailed
     return
   }
@@ -64,6 +79,7 @@ async function handleNewPoolMintTx(txId: string) {
   if (validationResults.startTimeInEpoch) {
     console.log(`Pool is postoned.`)
     console.log(`START TIME: ${validationResults.startTimeInEpoch}`)
+    logAction(`Pool ${validationResults.pool.id} is postponed to ${formatDate(new Date(validationResults.startTimeInEpoch))}`)
     const delayBeforeStart = (validationResults.startTimeInEpoch * 1000) - Date.now()
     const maxTimeToWait = 24 * 60 * 60 * 1000
     console.log(`Pool ${validationResults.pool.id} starts in ${delayBeforeStart / 1000} seconds`)
@@ -77,8 +93,11 @@ async function handleNewPoolMintTx(txId: string) {
     }
   }
 
+  logAction(`Received updated validation for postponed Pool TxId ${txId}`)
   if (typeof validationResults === `string`) {
     console.log(`Failed to validate with error: ${validationResults}`)
+    logAction(`Error: ${validationResults}`)
+
     // Notify state listener onPoolValidationFailed
     return
   }
@@ -88,13 +107,19 @@ async function handleNewPoolMintTx(txId: string) {
   console.log(JSON.stringify(validationResults.safetyStatus, null, 2))
   console.log(JSON.stringify(validationResults.reason, null, 2))
   // Notify state listener onPoolValidationCompleted
+  logAction(`Token in pool ${validationResults.pool.id} is ${validationResults.safetyStatus}`)
+  logAction(`Pool ${validationResults.pool.id} validation results reason is ${validationResults.reason}`)
+  logAction(`Pool ${validationResults.pool.id} trend is ${JSON.stringify(validationResults.trend)}`)
 
   if (validationResults.safetyStatus === 'RED') {
     console.log(chalk.red('Red token. Skipping'))
     return
   }
 
-  const tradeResults = await traderPool.run(validationResults)
+
+  logAction(`Start trading forpool ${validationResults.pool.id}`)
+  const tradeResults: SellResults = await traderPool.run(validationResults)
+  logAction(`Received trading results ${JSON.stringify(tradeResults)}`)
 
   console.log(chalk.yellow('Got trading results'))
   console.log(JSON.stringify(tradeResults, null, 2))
@@ -105,6 +130,9 @@ async function main() {
   // await handleNewPoolMintTx(TEST_TX)
   // return;
   /* Uncomment to perform single buy/sell test with predifined pool */
+
+  console.log(`Start Solana bot. Simulation=${config.simulateOnly}`)
+  logAction(`Start Solana bot. Simulation=${config.simulateOnly}`)
 
   const connection = new Connection(config.rpcHttpURL, {
     wsEndpoint: config.rpcWsURL

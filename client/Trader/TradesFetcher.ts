@@ -1,6 +1,9 @@
 import { PublicKey, ParsedTransactionWithMeta, Connection, ParsedAccountData } from '@solana/web3.js'
 import { WSOL } from '@raydium-io/raydium-sdk'
 import { PoolKeys } from '../PoolValidator/RaydiumPoolParser'
+import path from 'path'
+import fs from 'fs'
+import { config } from '../Config'
 
 
 export type TradeType = 'BUY' | 'SELL'
@@ -31,7 +34,11 @@ export async function fetchLatestTrades(
   const tokenMintAddress = isTokenBase ? poolKeys.baseMint : poolKeys.quoteMint
   const tokenDecimals = isTokenBase ? poolKeys.baseDecimals : poolKeys.quoteDecimals
   const txs = await fetchAllTransactions(connection, new PublicKey(poolKeys.id))
-  const tradeRecords = await parseTradingData(connection, poolKeys, txs, new PublicKey(tokenMintAddress), tokenDecimals)
+  const tradeRecords = await parseTradingData(poolKeys, txs, new PublicKey(tokenMintAddress), tokenDecimals)
+  tradeRecords.sort((a, b) => a.epochTime - b.epochTime)
+  if (config.dumpTradingHistoryToFile) {
+    saveToCSV(poolKeys.id, tradeRecords)
+  }
   return tradeRecords
 }
 
@@ -54,7 +61,6 @@ async function fetchAllTransactions(connection: Connection, address: PublicKey):
 }
 
 async function parseTradingData(
-  connection: Connection,
   poolKeys: PoolKeys,
   transactions: (ParsedTransactionWithMeta | null)[],
   tokenMint: PublicKey,
@@ -69,41 +75,9 @@ async function parseTradingData(
 
     const splTransferPairs = inner.map(x => x.instructions.filter((a: any) => a.program === 'spl-token'))
     const splTransferPair = splTransferPairs.find(x => x.length === 2)
-    const preBalances = txOrNull.meta?.preTokenBalances
-    const postBalances = txOrNull.meta?.postTokenBalances
     if (splTransferPair) {
-      // const userOtherTokenPreBalance = preBalances.reduce((sum, x) => {
-      //   if (x.owner !== raydiumPoolAuthority && x.mint === shitToken) {
-      //     return sum += x.uiTokenAmount.uiAmount ?? 0
-      //   }
-      //   return sum
-      // }, 0)
-
-      // const userOtherTokenPostBalance = postBalances.reduce((sum, x) => {
-      //   if (x.owner !== raydiumPoolAuthority && x.mint === shitToken) {
-      //     return sum += x.uiTokenAmount.uiAmount ?? 0
-      //   }
-      //   return sum
-      // }, 0)
-
-      // const userSolPreBalance = preBalances.reduce((sum, x) => {
-      //   if (x.owner !== raydiumPoolAuthority && x.mint === WSOL.mint) {
-      //     return sum += x.uiTokenAmount.uiAmount ?? 0
-      //   }
-      //   return sum
-      // }, 0)
-
-      // const userSolPostBalance = postBalances.reduce((sum, x) => {
-      //   if (x.owner !== raydiumPoolAuthority && x.mint === WSOL.mint) {
-      //     return sum += x.uiTokenAmount.uiAmount ?? 0
-      //   }
-      //   return sum
-      // }, 0)
-
       const inInfo: SPLTransferInfo = (splTransferPair[0] as any).parsed.info
       const outInfo: SPLTransferInfo = (splTransferPair[1] as any).parsed.info
-
-      // TODO: improve
 
       const quoteIsToken = poolKeys.quoteMint === tokenMint.toString()
 
@@ -131,10 +105,6 @@ async function parseTradingData(
   return results
 }
 
-function isParsedAccountData(data: Buffer | ParsedAccountData): data is ParsedAccountData {
-  return (data as ParsedAccountData).parsed !== undefined;
-}
-
 function formatTime(date: Date): string {
   // Get hours, minutes, and seconds from the date
   const hours = String(date.getHours()).padStart(2, '0');
@@ -143,4 +113,22 @@ function formatTime(date: Date): string {
 
   // Format time as 'HH:MM:SS'
   return `${hours}:${minutes}:${seconds}`;
+}
+
+function saveToCSV(fileName: string, data: TradeRecord[]) {
+  const titleKeys = Object.keys(data[0])
+  const refinedData = []
+  refinedData.push(titleKeys)
+  data.forEach(item => {
+    refinedData.push(Object.values(item))
+  })
+
+  let csvContent = ''
+
+  const filePath = path.join(__dirname, `/trading_data/${fileName}.csv`)
+
+  refinedData.forEach(row => {
+    csvContent += row.join(',') + '\n'
+  })
+  fs.writeFileSync(filePath, csvContent, {})
 }
