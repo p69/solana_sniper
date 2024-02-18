@@ -45,6 +45,15 @@ const logAction = (...args: any[]) => {
 
 const RAYDIUM_PUBLIC_KEY = '675kPX9MHTjS2zt1qfr1NYHuzeLXfQM9H24wFSUt1Mp8';
 
+let tradingWallet: { startValue: number, current: number, totalProfit: number } = {
+  startValue: 1,
+  current: 1,
+  totalProfit: 0
+}
+
+let runningTradesCount = 0
+let maxCountOfSimulteniousTradings = 0
+
 const validatorPool = new Piscina({
   filename: path.resolve(__dirname, './PoolValidator/RaydiumPoolValidator.js')
 });
@@ -116,10 +125,39 @@ async function handleNewPoolMintTx(txId: string) {
     return
   }
 
+  if (validationResults.safetyStatus !== 'GREEN') {
+    if (validationResults.trend!.volatility > config.safePriceValotilityRate) {
+      console.log(`Not GREEN token and Price volatility is to high ${validationResults.trend!.volatility}`)
+      logAction(`Not GREEN token and Price volatility is to high ${validationResults.trend!.volatility}`)
+      return
+    }
 
-  logAction(`Start trading forpool ${validationResults.pool.id}`)
+    if (validationResults.trend!.buysCount < config.safeBuysCountInFirstMinute) {
+      console.log(`Not GREEN token and Very little BUY txs ${validationResults.trend!.buysCount}`)
+      logAction(`Not GREEN token and Very little BUY txs ${validationResults.trend!.buysCount}`)
+      return
+    }
+  }
+
+
+  logAction(`Start trading for pool ${validationResults.pool.id}`)
+  runningTradesCount++
+  if (maxCountOfSimulteniousTradings < runningTradesCount) {
+    maxCountOfSimulteniousTradings = runningTradesCount
+  }
   const tradeResults: SellResults = await traderPool.run(validationResults)
-  logAction(`Received trading results ${JSON.stringify(tradeResults)}`)
+  runningTradesCount--
+  logAction(`Pool ${validationResults.pool.id}, trading results: ${JSON.stringify(tradeResults)}`)
+
+  if (tradeResults.boughtForSol) {
+    const soldForSol = tradeResults.kind === 'SUCCESS' ? tradeResults.soldForSOL : 0
+    const profitAbsolute = soldForSol - tradeResults.boughtForSol
+    const newWalletBalance = tradingWallet.current + profitAbsolute
+    const totalProfit = (newWalletBalance - tradingWallet.startValue) / tradingWallet.startValue
+    tradingWallet = { ...tradingWallet, current: newWalletBalance, totalProfit }
+    logAction(`Wallet:\n${JSON.stringify(tradingWallet, null, 2)}`)
+    console.log(`Wallet:\n${JSON.stringify(tradingWallet, null, 2)}`)
+  }
 
   console.log(chalk.yellow('Got trading results'))
   console.log(JSON.stringify(tradeResults, null, 2))
@@ -133,6 +171,8 @@ async function main() {
 
   console.log(`Start Solana bot. Simulation=${config.simulateOnly}`)
   logAction(`Start Solana bot. Simulation=${config.simulateOnly}`)
+  logAction(`Wallet:\n${JSON.stringify(tradingWallet, null, 2)}`)
+  console.log(`Wallet:\n${JSON.stringify(tradingWallet, null, 2)}`)
 
   const connection = new Connection(config.rpcHttpURL, {
     wsEndpoint: config.rpcWsURL

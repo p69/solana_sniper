@@ -3,13 +3,14 @@ import { GeneralTokenCondition } from '../Swap'
 import { Token, TokenAmount, WSOL } from '@raydium-io/raydium-sdk'
 import { SOL_SPL_TOKEN_ADDRESS, PAYER, OWNER_ADDRESS } from "./Addresses"
 import { DANGEROUS_EXIT_STRATEGY, ExitStrategy, RED_TEST_EXIT_STRATEGY, SAFE_EXIT_STRATEGY } from './ExitStrategy'
-import { TradeRecord } from './TradesFetcher'
-import { convertStringKeysToDataKeys, formatDate } from '../Utils'
+import { TradeRecord, fetchLatestTrades } from './TradesFetcher'
+import { convertStringKeysToDataKeys, formatDate, retryAsyncFunctionOrDefault } from '../Utils'
 import { connection } from './Connection'
 import { buyToken } from './BuyToken'
 import { getAssociatedTokenAddressSync, TOKEN_PROGRAM_ID } from '@solana/spl-token'
 import { SellResults, sellToken } from './SellToken'
-import { findDumpingRecord } from './TradesAnalyzer'
+import { TrendAnalisis, analyzeTrend, findDumpingRecord } from './TradesAnalyzer'
+import { PoolKeys } from '../PoolValidator/RaydiumPoolParser'
 
 export type TraderResults = {
   boughtAmountInSOL: number | null,
@@ -48,6 +49,22 @@ async function tryPerformTrading(validationResults: PoolValidationResults): Prom
   const buyAmount = getBuyAmountInSOL(validationResults.safetyStatus)!
   const exitStrategy = getExitStrategy(validationResults.safetyStatus)!
 
+  //Verify trend agai before buyng
+  const currentTrendResults = await getCurrentTrend(validationResults.pool)
+  if (currentTrendResults.dumpTxs) {
+    //Dumped
+    return { kind: 'FAILED', reason: 'Dump detected', txId: null, boughtForSol: null, buyTime: null }
+  }
+  if (!currentTrendResults.analysis) {
+    //Couldn't detect trend, dangerous
+    return { kind: 'FAILED', reason: `Couldn't detect trend before buying. Dangerous`, txId: null, boughtForSol: null, buyTime: null }
+  }
+
+  if (currentTrendResults.analysis.type === 'DUMPING') {
+    //Dumping trend, maybe it's already late
+    return { kind: 'FAILED', reason: `Dumping trend detected right before buying, maybe it's already late. Dangerous`, txId: null, boughtForSol: null, buyTime: null }
+  }
+
   const buyResult = await buyToken(connection, PAYER, buyAmount, tokenBToken, tokenBAccountAddress, pool, SOL_SPL_TOKEN_ADDRESS)
   const buyDate = new Date()
 
@@ -67,6 +84,26 @@ async function tryPerformTrading(validationResults: PoolValidationResults): Prom
     exitStrategy)
   sellResults.buyTime = formatDate(buyDate)
   return sellResults
+}
+
+async function getCurrentTrend(poolKeys: PoolKeys): Promise<{ dumpTxs: [TradeRecord, TradeRecord] | null, analysis: TrendAnalisis | null }> {
+  const latestTrades = await retryAsyncFunctionOrDefault(fetchLatestTrades, [connection, poolKeys, 200], [])
+  const dumpRes = findDumpingRecord(latestTrades)
+  if (dumpRes !== null) {
+    return {
+      dumpTxs: dumpRes,
+      analysis: null
+    }
+  }
+
+  let trendResults: TrendAnalisis | null = null
+  if (latestTrades.length > 0) {
+    trendResults = analyzeTrend(latestTrades, null, false, false)
+  }
+  return {
+    dumpTxs: null,
+    analysis: trendResults
+  }
 }
 
 function getBuyAmountInSOL(tokenStatus: TokenSafetyStatus): number | null {

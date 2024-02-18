@@ -29,11 +29,13 @@ interface SPLTransferInfo {
 
 export async function fetchLatestTrades(
   connection: Connection,
-  poolKeys: PoolKeys): Promise<TradeRecord[]> {
+  poolKeys: PoolKeys,
+  tradesLimit: number | null = null
+): Promise<TradeRecord[]> {
   const isTokenBase = poolKeys.quoteMint === WSOL.mint
   const tokenMintAddress = isTokenBase ? poolKeys.baseMint : poolKeys.quoteMint
   const tokenDecimals = isTokenBase ? poolKeys.baseDecimals : poolKeys.quoteDecimals
-  const txs = await fetchAllTransactions(connection, new PublicKey(poolKeys.id))
+  const txs = await fetchAllTransactions(connection, new PublicKey(poolKeys.id), tradesLimit)
   const tradeRecords = await parseTradingData(poolKeys, txs, new PublicKey(tokenMintAddress), tokenDecimals)
   tradeRecords.sort((a, b) => a.epochTime - b.epochTime)
   if (config.dumpTradingHistoryToFile) {
@@ -42,12 +44,12 @@ export async function fetchLatestTrades(
   return tradeRecords
 }
 
-async function fetchAllTransactions(connection: Connection, address: PublicKey): Promise<ParsedTransactionWithMeta[]> {
+async function fetchAllTransactions(connection: Connection, address: PublicKey, maxCount: number | null): Promise<ParsedTransactionWithMeta[]> {
   let results: ParsedTransactionWithMeta[] = []
   let hasMore = true
   const limit = 1000
   let beforeTx: string | undefined = undefined
-  while (hasMore) {
+  while (hasMore || (maxCount ? results.length < maxCount : true)) {
     const fetchedIds = await connection.getConfirmedSignaturesForAddress2(address, { limit: limit, before: beforeTx })
     if (fetchedIds.length === 0) { break }
     const filtered = fetchedIds.filter(x => !x.err)

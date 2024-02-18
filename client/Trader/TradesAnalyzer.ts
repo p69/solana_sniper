@@ -29,10 +29,20 @@ export function standardDeviation(values: number[]): number {
 
 const FAST_PRICE_CHANGING_RATE = 0.001
 
-export function analyzeTrend(data: TradeRecord[]): TrendAnalisis {
-  const lastEpochTime = data[0].epochTime + 60 // Check only first minute
+export function analyzeTrend(
+  data: TradeRecord[],
+  timeLimitSeconds: number | null = 60,
+  onlyBuy: boolean = true,
+  filterOutLargeBets: boolean = true
+): TrendAnalisis {
+  const lastEpochTime = timeLimitSeconds ? data[0].epochTime + timeLimitSeconds : data[data.length - 1].epochTime // Check only first minute
   const tooLargeBet = 2
-  const filtered = data.filter(x => x.epochTime <= lastEpochTime && x.type === 'BUY' && x.priceInSOL <= tooLargeBet)
+  const filtered = data.filter(x => {
+    const timeFilter = x.epochTime <= lastEpochTime
+    const typeFilter = onlyBuy ? x.type === 'BUY' : true
+    const priceFilter = filterOutLargeBets ? x.priceInSOL <= tooLargeBet : true
+    return timeFilter && typeFilter && priceFilter
+  })
   let growthRates: number[] = []
   // Calculate growth rates between each pair of records
   for (let i = 1; i < filtered.length; i++) {

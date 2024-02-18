@@ -133,30 +133,6 @@ async function validateNewPool(mintTxId: string): Promise<PoolValidationResults 
       }
     }
 
-    if (trendResults.volatility > config.safePriceValotilityRate) {
-      return {
-        pool: poolKeys,
-        poolInfo: info,
-        poolFeatures: features,
-        safetyStatus: 'RED',
-        startTimeInEpoch: startTime,
-        reason: `Price volatility is to high ${trendResults.volatility}`,
-        trend: trendResults
-      }
-    }
-
-    if (trendResults.buysCount < config.safeBuysCountInFirstMinute) {
-      return {
-        pool: poolKeys,
-        poolInfo: info,
-        poolFeatures: features,
-        safetyStatus: 'RED',
-        startTimeInEpoch: startTime,
-        reason: `Very little BUY txs ${trendResults.buysCount}`,
-        trend: trendResults
-      }
-    }
-
     if (safetyCheckResults.newTokensWereMintedDuringValidation) {
       return {
         pool: poolKeys,
