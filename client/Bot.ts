@@ -11,7 +11,7 @@ import { delay, formatDate } from './Utils';
 import { config } from './Config';
 import { SellResults } from './Trader/SellToken';
 // Specify the log file path
-const log_fil_sufix = 3
+const log_fil_sufix = 6
 const logFilePath = path.join(__dirname, `/logs/application_${log_fil_sufix}.log`)
 
 // Create a write stream for the log file

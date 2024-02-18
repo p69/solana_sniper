@@ -2,7 +2,7 @@ import * as dotenv from 'dotenv'
 import { TokenSafetyStatus } from './PoolValidator/ValidationResult'
 dotenv.config()
 
-const SAFE_VALOTILITY_RATE = 0.5
+const SAFE_VALOTILITY_RATE = 1.0
 
 interface Config {
   rpcHttpURL: string,

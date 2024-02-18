@@ -170,8 +170,8 @@ async function validateNewPool(mintTxId: string): Promise<PoolValidationResults 
     }
 
     const SAFE_LOCKED_LIQUIDITY_PERCENT = 0.9
-    const MIN_PERCENT_NEW_TOKEN_INPOOL = 0.8
-    const LOW_IN_USD = 1000;
+    const MIN_PERCENT_NEW_TOKEN_INPOOL = 0.1
+    const LOW_IN_USD = 500;
     const HIGH_IN_USD = 100000000;
 
     /// Check is liquidiity amount is too low r otoo high (both are suspicous)
@@ -274,7 +274,7 @@ async function validateNewPool(mintTxId: string): Promise<PoolValidationResults 
           poolFeatures: features,
           safetyStatus: 'RED',
           startTimeInEpoch: startTime,
-          reason: `Less then ${MIN_PERCENT_NEW_TOKEN_INPOOL * 100}% of tokens are not in pool.`,
+          reason: `Less then ${MIN_PERCENT_NEW_TOKEN_INPOOL * 100}% of tokens are in pool.`,
           trend: trendResults
         }
       }

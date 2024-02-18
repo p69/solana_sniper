@@ -123,7 +123,7 @@ export async function checkToken(tx: ParsedTransactionWithMeta, pool: LiquidityP
     // If all tokens were transfered to the pool
     // Verify burned LP tokens for few hours every 5 minutes
     // Could be a gem
-    if (newTokenPoolBalancePercent >= 0.99) {
+    if (newTokenPoolBalancePercent >= 0.5) {
       console.log(chalk.cyan(`All tokens are in pool, but LP tokens aren't burned yet. Start verifying it every 5 minutes`))
       const updatedData = await checkMintAuthorityAndBurnedTokensOrTimeout(
         mintAuthority?.toString() ?? null,
