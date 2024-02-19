@@ -45,15 +45,17 @@ app.get('/trades', (req: Request, res: Response) => {
 })
 
 app.get('/running_validations', (req: Request, res: Response) => {
-  res.send(JSON.stringify(bot.getRunningValidationInfo()))
+  const mapToObject = Object.fromEntries(bot.getRunningValidationInfo())
+  res.json(mapToObject)
 })
 
 app.get('/completed_validations', (req: Request, res: Response) => {
-  res.send(JSON.stringify(bot.getCompletedValidations()))
+  const mapToObject = Object.fromEntries(bot.getCompletedValidations())
+  res.json(mapToObject)
 })
 
 app.get('/validation_errors', (req: Request, res: Response) => {
-  res.send(JSON.stringify(bot.getValidationErrors()))
+  res.json(bot.getValidationErrors())
 })
 
 // Start the server
