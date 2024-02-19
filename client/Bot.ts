@@ -11,7 +11,7 @@ import { delay, formatDate } from './Utils';
 import { config } from './Config';
 import { SellResults } from './Trader/SellToken';
 // Specify the log file path
-const log_fil_sufix = 6
+const log_fil_sufix = (new Date()).getUTCSeconds()
 const logFilePath = path.join(__dirname, `/logs/application_${log_fil_sufix}.log`)
 
 // Create a write stream for the log file
@@ -53,6 +53,9 @@ let tradingWallet: { startValue: number, current: number, totalProfit: number } 
 
 let runningTradesCount = 0
 let maxCountOfSimulteniousTradings = 0
+let runningValidatorsCount = 0
+let maxCountOfSimulteniousValidators = 0
+const VALIDATORS_LIMIT = 15
 
 const validatorPool = new Piscina({
   filename: path.resolve(__dirname, './PoolValidator/RaydiumPoolValidator.js')
@@ -67,6 +70,11 @@ const seenTransactions = new Set();
 const TEST_TX = '3ha4QStA5dwLyn2FL5v4UYLi3GQypfX8XXuJm5B67M1FqkafVqw71zPkSWkB2otapzquSNWEUN4NeLRPgKmsjm8B'
 
 async function handleNewPoolMintTx(txId: string) {
+  if (runningValidatorsCount === VALIDATORS_LIMIT) {
+    console.log(chalk.yellow(`Find pool with tx - ${txId} but limit of ${VALIDATORS_LIMIT} has been reached. Skipped`))
+    logAction(`Find pool with tx - ${txId} but limit of ${VALIDATORS_LIMIT} has been reached. Skipped`)
+    return
+  }
   console.log(chalk.yellow(`Find pool with tx - ${txId} Sending to Validator`))
   const msg: ValidatePoolData = {
     mintTxId: txId,
@@ -74,8 +82,15 @@ async function handleNewPoolMintTx(txId: string) {
   }
 
   logAction(`Received first mint tx https://solscan.io/tx/${txId}`)
+  runningValidatorsCount++
+  if (runningValidatorsCount > maxCountOfSimulteniousValidators) {
+    maxCountOfSimulteniousValidators = runningValidatorsCount
+  }
+  logAction(`Running Validators - current: ${runningValidatorsCount}, max: ${maxCountOfSimulteniousValidators}`)
 
   let validationResults: PoolValidationResults | string = await validatorPool.run(msg)
+  runningValidatorsCount--
+
   if (typeof validationResults === `string`) {
     console.log(`Failed to validate with error: ${validationResults}`)
     logAction(`Failed to validate pool by first min tx https://solscan.io/tx/${txId}`)
@@ -95,10 +110,17 @@ async function handleNewPoolMintTx(txId: string) {
     if (delayBeforeStart > 0 && delayBeforeStart < maxTimeToWait) {
       console.log(`Wait until it starts`)
       await delay(delayBeforeStart + 300)
+      runningValidatorsCount++
+      if (runningValidatorsCount > maxCountOfSimulteniousValidators) {
+        maxCountOfSimulteniousValidators = runningValidatorsCount
+      }
+      logAction(`Running Validators - current: ${runningValidatorsCount}, max: ${maxCountOfSimulteniousValidators}`)
       validationResults = await validatorPool.run(msg)
+      runningValidatorsCount--
       console.log(`Got updated results`)
     } else {
       console.log(`It's too long, don't wait. Need to add more robust scheduler`)
+      runningValidatorsCount--
     }
   }
 
@@ -145,8 +167,10 @@ async function handleNewPoolMintTx(txId: string) {
   if (maxCountOfSimulteniousTradings < runningTradesCount) {
     maxCountOfSimulteniousTradings = runningTradesCount
   }
+  logAction(`Running Traders - current: ${runningTradesCount}, max: ${maxCountOfSimulteniousTradings}`)
   const tradeResults: SellResults = await traderPool.run(validationResults)
   runningTradesCount--
+  logAction(`Running Traders - current: ${runningTradesCount}, max: ${maxCountOfSimulteniousTradings}`)
   logAction(`Pool ${validationResults.pool.id}, trading results: ${JSON.stringify(tradeResults)}`)
 
   if (tradeResults.boughtForSol) {

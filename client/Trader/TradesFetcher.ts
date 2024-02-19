@@ -39,7 +39,10 @@ export async function fetchLatestTrades(
   const tradeRecords = await parseTradingData(poolKeys, txs, new PublicKey(tokenMintAddress), tokenDecimals)
   tradeRecords.sort((a, b) => a.epochTime - b.epochTime)
   if (config.dumpTradingHistoryToFile) {
+    const startDumpingToFile = new Date()
     saveToCSV(poolKeys.id, tradeRecords)
+    const endDumpingToFile = new Date()
+    console.log(`Poole ${poolKeys.id}. Dumping to file took ${endDumpingToFile.getUTCSeconds() - startDumpingToFile.getUTCSeconds()}`)
   }
   return tradeRecords
 }
@@ -127,10 +130,14 @@ function saveToCSV(fileName: string, data: TradeRecord[]) {
 
   let csvContent = ''
 
-  const filePath = path.join(__dirname, `/trading_data/${fileName}.csv`)
+  let filePath = path.join(__dirname, `/trading_data/${fileName}.csv`)
 
   refinedData.forEach(row => {
     csvContent += row.join(',') + '\n'
   })
+
+  if (fs.existsSync(filePath)) {
+    fileName = path.join(__dirname, `/trading_data/${fileName}_1.csv`)
+  }
   fs.writeFileSync(filePath, csvContent, {})
 }

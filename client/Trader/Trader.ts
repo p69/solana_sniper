@@ -49,21 +49,24 @@ async function tryPerformTrading(validationResults: PoolValidationResults): Prom
   const buyAmount = getBuyAmountInSOL(validationResults.safetyStatus)!
   const exitStrategy = getExitStrategy(validationResults.safetyStatus)!
 
-  //Verify trend agai before buyng
+  //Verify trend again before buyng
   const currentTrendResults = await getCurrentTrend(validationResults.pool)
+  console.log(`Pool ${pool.id.toString()}. Trend before buying: ${JSON.stringify(currentTrendResults)}`)
   if (currentTrendResults.dumpTxs) {
     //Dumped
-    return { kind: 'FAILED', reason: 'Dump detected', txId: null, boughtForSol: null, buyTime: null }
+    return { kind: 'FAILED', reason: 'Trend before buy error: Dump detected', txId: null, boughtForSol: null, buyTime: null }
   }
   if (!currentTrendResults.analysis) {
     //Couldn't detect trend, dangerous
-    return { kind: 'FAILED', reason: `Couldn't detect trend before buying. Dangerous`, txId: null, boughtForSol: null, buyTime: null }
+    return { kind: 'FAILED', reason: `Trend before buy error: Couldn't detect trend before buying. Dangerous`, txId: null, boughtForSol: null, buyTime: null }
   }
 
   if (currentTrendResults.analysis.type === 'DUMPING') {
     //Dumping trend, maybe it's already late
-    return { kind: 'FAILED', reason: `Dumping trend detected right before buying, maybe it's already late. Dangerous`, txId: null, boughtForSol: null, buyTime: null }
+    return { kind: 'FAILED', reason: `Trend before buy error: Dumping trend detected right before buying, maybe it's already late. Dangerous`, txId: null, boughtForSol: null, buyTime: null }
   }
+
+  console.log(`Pool ${pool.id.toString()}. Trend before buy is good: ${JSON.stringify(currentTrendResults.analysis)}`)
 
   const buyResult = await buyToken(connection, PAYER, buyAmount, tokenBToken, tokenBAccountAddress, pool, SOL_SPL_TOKEN_ADDRESS)
   const buyDate = new Date()
