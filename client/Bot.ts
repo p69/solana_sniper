@@ -51,7 +51,10 @@ export class TradingBot {
   private runningValidatorsCount = 0
   private maxCountOfSimulteniousValidators = 0
   private skippedPools: string[] = []
+  private allValidatedPools = new Map<string, string>()
   private completedTrades: string[] = []
+  private validationErrors: string[] = []
+  private runningValidations = new Map<string, string>()
 
 
   private validatorPool = new Piscina({
@@ -130,6 +133,18 @@ export class TradingBot {
     return this.tradingWallet
   }
 
+  getRunningValidationInfo() {
+    return this.runningValidations
+  }
+
+  getCompletedValidations() {
+    return this.allValidatedPools
+  }
+
+  getValidationErrors() {
+    return this.validationErrors
+  }
+
   private async handleNewPoolMintTx(txId: string) {
     if (this.onLogsSubscriptionId === null) { return }
 
@@ -150,13 +165,19 @@ export class TradingBot {
     }
     console.log(`Running Validators - current: ${this.runningValidatorsCount}, max: ${this.maxCountOfSimulteniousValidators}`)
 
+    this.runningValidations.set(txId, `Running iniitial validation.`)
+
     let validationResults: PoolValidationResults | string = await this.validatorPool.run(msg)
     if (this.onLogsSubscriptionId === null) { return }
     this.runningValidatorsCount--
 
+    this.runningValidations.set(txId, `Initial validation results: ${JSON.stringify(validationResults)}`)
+
     if (typeof validationResults === `string`) {
       console.log(`Failed to validate pool by first min tx https://solscan.io/tx/${txId}\nValidaition Error: ${validationResults}`)
       this.skippedPools.push(`Failed to validate pool by first min tx https://solscan.io/tx/${txId}\nValidaition Error: ${validationResults}`)
+      this.runningValidations.delete(txId)
+      this.validationErrors.push(`MintTx: ${txId}, error: ${validationResults}`)
       // Notify state listener onPoolValidationFailed
       return
     }
@@ -164,33 +185,35 @@ export class TradingBot {
     console.log(chalk.yellow(`Validation results for pool ${validationResults.pool.id}`))
     if (validationResults.startTimeInEpoch) {
       console.log(`Pool ${validationResults.pool.id} is postponed to ${formatDate(new Date(validationResults.startTimeInEpoch))}`)
+      this.runningValidations.set(txId, `Pool is postponed to ${formatDate(new Date(validationResults.startTimeInEpoch))} wait for it. ${JSON.stringify(validationResults)}`)
       const delayBeforeStart = (validationResults.startTimeInEpoch * 1000) - Date.now()
       const maxTimeToWait = 24 * 60 * 60 * 1000
       if (delayBeforeStart > 0 && delayBeforeStart < maxTimeToWait) {
         console.log(`Wait until it starts`)
         await delay(delayBeforeStart + 300)
         if (this.onLogsSubscriptionId === null) { return }
-        this.runningValidatorsCount++
-        if (this.runningValidatorsCount > this.maxCountOfSimulteniousValidators) {
-          this.maxCountOfSimulteniousValidators = this.runningValidatorsCount
-        }
         console.log(`Running Validators - current: ${this.runningValidatorsCount}, max: ${this.maxCountOfSimulteniousValidators}`)
+        this.runningValidations.set(txId, `Postponed pool has started, performing another validation. ${JSON.stringify(validationResults)}`)
         validationResults = await this.validatorPool.run(msg)
+        this.runningValidations.set(txId, `Received updated results for postponed pool. ${JSON.stringify(validationResults)}`)
         if (this.onLogsSubscriptionId === null) { return }
-        this.runningValidatorsCount--
         console.log(`Got updated results`)
       } else {
         console.log(`It's too long, don't wait. Need to add more robust scheduler`)
-        this.runningValidatorsCount--
       }
     }
+
+    this.runningValidations.delete(txId)
 
     if (typeof validationResults === `string`) {
       console.log(`Failed to validate postponed Pool TxId ${txId} with error: ${validationResults}`)
       this.skippedPools.push(`Failed to validate postponed Pool TxId ${txId} with error: ${validationResults}`)
+      this.validationErrors.push(`MintTx: ${txId}, error: ${validationResults}`)
       // Notify state listener onPoolValidationFailed
       return
     }
+
+    this.allValidatedPools.set(validationResults.pool.id, JSON.stringify(validationResults.safetyStatus))
 
     // Notify state listener onPoolValidationCompleted
     console.log(`Token in pool ${validationResults.pool.id} is ${validationResults.safetyStatus}`)
