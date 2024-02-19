@@ -6,7 +6,6 @@
   "scripts": {
     "build": "tsc",
     "start": "node client/dist/index.js",
-    "bot": "node client/dist/bot.js",
     "single": "node client/dist/SwapTest.js",
     "fills": "node client/dist/Trader/SerumMarket.js"
   },
@@ -16,6 +15,7 @@
   "devDependencies": {
     "@types/bs58": "^4.0.4",
     "@types/cli-table": "^0.3.4",
+    "@types/express": "^4.17.21",
     "@types/node": "^20.11.16",
     "typescript": "^5.3.3"
   },

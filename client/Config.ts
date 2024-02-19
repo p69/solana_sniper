@@ -13,7 +13,9 @@ interface Config {
   allowedTradingSafety: Set<TokenSafetyStatus>,
   walletPublic: string,
   walletPrivate: string,
-  dumpTradingHistoryToFile: boolean
+  dumpTradingHistoryToFile: boolean,
+  validatorsLimit: number,
+  appPort: number,
 }
 
 export const config: Config = {
@@ -25,5 +27,7 @@ export const config: Config = {
   allowedTradingSafety: new Set(['GREEN', 'YELLOW']),
   walletPublic: process.env.WALLET_PUBLIC_KEY!,
   walletPrivate: process.env.WALLET_PRIVATE_KEY!,
-  dumpTradingHistoryToFile: process.env.DUMP_HISTORY_TRADING_RECORDS_TO_FILE === 'true'
+  dumpTradingHistoryToFile: process.env.DUMP_HISTORY_TRADING_RECORDS_TO_FILE === 'true',
+  validatorsLimit: Number(process.env.VALIDATORS_LIMIT!),
+  appPort: process.env.APP_PORT ? Number(process.env.APP_PORT) : 3000
 }
