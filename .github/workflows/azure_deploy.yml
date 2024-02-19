@@ -9,17 +9,24 @@ jobs:
   deploy:
     runs-on: ubuntu-latest
     steps:
-    - uses: actions/checkout@v2
+    - uses: actions/checkout@v4
+
+    - name: Get changed files
+      id: changed-files
+      uses: tj-actions/changed-files@v35
+      with:
+        since_last_remote_commit: true
+        separator: ","
 
     - name: Copy files to the Azure VM
-      uses: appleboy/scp-action@master
+      uses: appleboy/scp-action@v0.1.7
       with:
         host: ${{ secrets.AZURE_VM_IP }}
         username: ${{ secrets.SSH_USER }}
         key: ${{ secrets.SSH_PRIVATE_KEY }}
         port: 22
-        source: "."
-        target: "/apps/solana_bot"
+        source: ${{ steps.changed-files.outputs.all_changed_files }}
+        target: /apps/solana_bot
 
     - name: Install dependencies and restart the app
       uses: appleboy/ssh-action@master
