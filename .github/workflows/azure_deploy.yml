@@ -11,24 +11,7 @@ jobs:
     steps:
     - uses: actions/checkout@v4
 
-    - name: Get changed files
-      id: changed-files
-      uses: tj-actions/changed-files@v35
-      with:
-        since_last_remote_commit: true
-        separator: ","
-
-    - name: Copy files to the Azure VM
-      uses: appleboy/scp-action@v0.1.7
-      with:
-        host: ${{ secrets.AZURE_VM_IP }}
-        username: ${{ secrets.SSH_USER }}
-        key: ${{ secrets.SSH_PRIVATE_KEY }}
-        port: 22
-        source: ${{ steps.changed-files.outputs.all_changed_files }}
-        target: ~/apps/solana_bot
-
-    - name: Install dependencies and restart the app
+    - name: Pull latest changes, install packages, build and run
       uses: appleboy/ssh-action@master
       with:
         host: ${{ secrets.AZURE_VM_IP }}
@@ -36,7 +19,8 @@ jobs:
         key: ${{ secrets.SSH_PRIVATE_KEY }}
         port: 22
         script: |
-          cd ~/apps/solana_bot
+          cd ~/apps/solana_bot/solana_sniper
+          git pull
           npm install
           npm run build
           pm2 reload ecosystem.config.js || pm2 start ecosystem.config.js
