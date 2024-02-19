@@ -36,6 +36,6 @@ app.get('/trades', (req: Request, res: Response) => {
 })
 
 // Start the server
-app.listen(config.appPort, () => {
+app.listen(config.appPort, '0.0.0.0', () => {
   console.log(`Server running on http://localhost:${config.appPort}`);
 })
