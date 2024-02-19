@@ -180,8 +180,9 @@ async function loopAndWaitForProfit(
   tokenOut: Token,
   poolKeys: LiquidityPoolKeysV4,
   amountOutCalculationDelayMs: number,
+  profitObject: { amountOut: number, profit: number },
   cancellationToken: { cancelled: boolean }
-): Promise<{ amountOut: number, profit: number }> {
+) {
   const STOP_LOSS_PERCENT = -0.5
 
   let profitToTakeOrLose: number = 0;
@@ -197,6 +198,8 @@ async function loopAndWaitForProfit(
       if (calculationResult !== null) {
         const { currentAmountOut, profit } = calculationResult;
         profitToTakeOrLose = profit;
+        profitObject.profit = profit
+        profitObject.amountOut = currentAmountOut
 
         console.log(chalk.bgCyan(`Profit is less target: ${profitToTakeOrLose < targetProfitPercentage}`));
 
@@ -231,21 +234,18 @@ export async function waitForProfitOrTimeout(
   profitCalculationIterationDelayMs: number,
   timeutInMillis: number
 ): Promise<{ amountOut: number, profit: number }> {
-  let lastProfitToTake: number = 0
-  let amountOut: number = 0
   const cancellationToken = { cancelled: false }
+  let profitObject: { amountOut: number, profit: number } = { amountOut: 0, profit: 0 }
   try {
-    const calcResults = await Promise.race([
-      loopAndWaitForProfit(spentAmount, targetProfitPercentage, connection, amountIn, tokenOut, poolKeys, profitCalculationIterationDelayMs, cancellationToken),
+    await Promise.race([
+      loopAndWaitForProfit(spentAmount, targetProfitPercentage, connection, amountIn, tokenOut, poolKeys, profitCalculationIterationDelayMs, profitObject, cancellationToken),
       timeout(timeutInMillis, cancellationToken)
     ])
-    lastProfitToTake = calcResults.profit
-    amountOut = calcResults.amountOut
   } catch (e) {
-    console.log(`Timeout happened ${chalk.bold('Profit to take: ')} ${lastProfitToTake < 0 ? chalk.red(lastProfitToTake) : chalk.green(lastProfitToTake)}`);
+    console.log(`Timeout happened ${chalk.bold('Profit to take: ')} ${profitObject.profit < 0 ? chalk.red(profitObject.profit) : chalk.green(profitObject.profit)}`);
   }
-  console.log(`Fixing profit ${chalk.bold('Profit to take: ')} ${lastProfitToTake < 0 ? chalk.red(lastProfitToTake) : chalk.green(lastProfitToTake)}`);
-  return { amountOut, profit: lastProfitToTake }
+  console.log(`Fixing profit ${chalk.bold('Profit to take: ')} ${profitObject.profit < 0 ? chalk.red(profitObject.profit) : chalk.green(profitObject.profit)}`);
+  return { amountOut: profitObject.amountOut, profit: profitObject.profit }
 }
 
 export async function validateTradingTrendOrTimeout(
