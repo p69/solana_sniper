@@ -11,7 +11,7 @@ export const SAFE_EXIT_STRATEGY: ExitStrategy = {
 }
 
 export const DANGEROUS_EXIT_STRATEGY: ExitStrategy = {
-  exitTimeoutInMillis: 1 * 60 * 1000, // 1 minutes time when token looks good
+  exitTimeoutInMillis: 10 * 60 * 1000, // 10 minutes time when token looks good
   targetProfit: 0.19, // make 20% (1% for slippage) in more secure way. owner could dump all tokens
   profitCalcIterationDelayMillis: 500 // 0.5 seconds
 }
