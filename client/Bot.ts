@@ -242,12 +242,18 @@ export class TradingBot {
     console.log(`Pool ${validationResults.pool.id} trend is ${JSON.stringify(validationResults.trend)}`)
 
     const tradingDecision = this.evaluateTradingDecision(validationResults)
+    console.log(`Pool: ${validationResults.pool.id} trading decision: ${tradingDecision.kind}`)
     switch (tradingDecision.kind) {
       case 'BAD': {
-        console.log(tradingDecision.reason)
+        console.log(`Pool: ${validationResults.pool.id} Ignore BAD token trading. ${tradingDecision.reason}`)
         this.skippedPools.push(tradingDecision.kind)
+        break
       }
-      case 'OK': this.startTrading(validationResults)
+      case 'OK': {
+        console.log(`Pool: ${validationResults.pool.id} Try OK token trading.`)
+        this.startTrading(validationResults)
+        break
+      }
     }
   }
 
