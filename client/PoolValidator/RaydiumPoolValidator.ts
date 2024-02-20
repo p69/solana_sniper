@@ -15,7 +15,9 @@ export type ValidatePoolData = {
 }
 
 module.exports = async (data: ValidatePoolData) => {
+  console.log(`Receive message in validation worker. TxId: ${data.mintTxId}.`)
   const validationResults = await validateNewPool(data.mintTxId)
+  console.log(`Finished validation in validation worker. TxId: ${data.mintTxId}.`)
   return validationResults
 }
 
