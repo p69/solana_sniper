@@ -7,6 +7,7 @@ import { BN } from "@project-serum/anchor";
 import chalk from 'chalk'
 import { delay, timeout } from '../Utils'
 import { connection } from './Connection'
+import { error } from 'console'
 
 const RAYDIUM_OWNER_AUTHORITY = '5Q544fKrFoe6tsEbD7S8EmxGTJYAKtTVhAW5Q5pge4j1';
 
@@ -27,7 +28,7 @@ export type SafetyCheckResult = {
   creator: PublicKey,
   newTokensWereMintedDuringValidation: boolean,
   totalLiquidity: LiquidityValue,
-  lockedPercentOfLiqiodity: number,
+  isliquidityLocked: boolean,
   newTokenPoolBalancePercent: number,
   ownershipInfo: OwnershipInfo,
 }
@@ -110,44 +111,25 @@ export async function checkToken(tx: ParsedTransactionWithMeta, pool: LiquidityP
     return null
   }
 
-  /// LP tokens balance right after first mint transaction
-  const mintTxLPTokenBalance = tx.meta.postTokenBalances.find(x => x.mint === lpTokenMint)!
 
-  const lpTokenAccount = getAssociatedTokenAddressSync(new PublicKey(lpTokenMint), creatorAddress)
+  let isLiquidityLocked = await checkIfLPTokenBurnedWithRetry(3, 500, new PublicKey(lpTokenMint))
 
-  let percentLockedLP: number
+  // Liqidity is not locked, but more than half of supply is in pool
+  // Possible that LP token wiill be burned later. Wait for a few hours
+  if (!isLiquidityLocked && newTokenPoolBalancePercent >= 0.5) {
+    console.log(chalk.cyan(`All tokens are in pool, but LP tokens aren't burned yet. Start verifying it`))
+    isLiquidityLocked = await checkLPTokenBurnedOrTimeout(
+      new PublicKey(lpTokenMint),
+      2 * 60 * 60 * 1000
+    )
 
-  if ((mintTxLPTokenBalance.uiTokenAmount.uiAmount ?? 0) <= 1) {
-    percentLockedLP = 1
-  } else {
-    // If all tokens were transfered to the pool
-    // Verify burned LP tokens for few hours every 5 minutes
-    // Could be a gem
-    if (newTokenPoolBalancePercent >= 0.5) {
-      console.log(chalk.cyan(`All tokens are in pool, but LP tokens aren't burned yet. Start verifying it`))
-      const updatedLpTokenInfo = await checkMintAuthorityAndBurnedTokensOrTimeout(
-        lpTokenAccount,
-        mintTxLPTokenBalance,
-        2 * 60 * 60 * 1000
-      )
+    const lastOtherTokenInfo = await connection.getAccountInfo(otherTokenMint)
+    const updatedMintInfo = MintLayout.decode(lastOtherTokenInfo!.data!.subarray(0, MINT_SIZE))
+    const lastTotalSupply = Number(updatedMintInfo.supply) / (10 ** updatedMintInfo.decimals)
+    const updatedMintAuthority = updatedMintInfo.mintAuthorityOption > 0 ? updatedMintInfo.mintAuthority : null
 
-      const lastOtherTokenInfo = await connection.getAccountInfo(otherTokenMint)
-      const updatedMintInfo = MintLayout.decode(lastOtherTokenInfo!.data!.subarray(0, MINT_SIZE))
-      const lastTotalSupply = Number(updatedMintInfo.supply) / (10 ** updatedMintInfo.decimals)
-      const updatedMintAuthority = updatedMintInfo.mintAuthorityOption > 0 ? updatedMintInfo.mintAuthority : null
-
-      tokenSupplyIsNotChanged = lastTotalSupply === totalSupply
-      mintAuthority = updatedMintAuthority
-      percentLockedLP = updatedLpTokenInfo.burnedPercent
-    } else {
-      percentLockedLP = await getPercentOfBurnedTokensWithRetry(
-        2, /// 4 attempts
-        1000, /// wait for 30 seconds before next retry
-        lpTokenAccount,
-        lpTokenMint,
-        mintTxLPTokenBalance
-      )
-    }
+    tokenSupplyIsNotChanged = lastTotalSupply === totalSupply
+    mintAuthority = updatedMintAuthority
   }
 
   /// Check if supply was changed during LP tokens validation
@@ -171,7 +153,7 @@ export async function checkToken(tx: ParsedTransactionWithMeta, pool: LiquidityP
 
   return {
     creator: creatorAddress,
-    lockedPercentOfLiqiodity: percentLockedLP,
+    isliquidityLocked: isLiquidityLocked,
     newTokensWereMintedDuringValidation: false,
     totalLiquidity: {
       amount: liquitity,
@@ -196,71 +178,76 @@ function reduceBalancesToTokensSet(balances: TokenBalance[]): Set<string> {
   }, result)
 }
 
-async function checkMintAuthorityAndBurnedTokensOrTimeout(
-  lpTokenAccount: PublicKey,
-  mintTxLPTokenBalance: TokenBalance,
+async function checkLPTokenBurnedOrTimeout(
+  lpTokenMint: PublicKey,
   timeoutInMillis: number,
-): Promise<{ leftAmount: number, burnedPercent: number }> {
-  const curremtAmount = mintTxLPTokenBalance.uiTokenAmount.uiAmount ?? 0
-  let lpTokenInfo = { leftAmount: curremtAmount, burnedPercent: 0 }
+): Promise<boolean> {
+  let isBurned = false
   try {
     await Promise.race([
-      checkMintAuthorityAndBurnedTokensInLoop(lpTokenAccount, mintTxLPTokenBalance, lpTokenInfo),
+      listenToLPTokenSupplyChanges(lpTokenMint),
       timeout(timeoutInMillis)
     ])
 
-    return lpTokenInfo
+    return isBurned
   } catch (e) {
     console.log(`Timeout happened during refreshing burned LP tokens percent`)
-    return lpTokenInfo
+    return isBurned
   }
 }
 
-async function checkMintAuthorityAndBurnedTokensInLoop(
-  lpTokenAccount: PublicKey,
-  mintTxLPTokenBalance: TokenBalance,
-  lpTokenInfo: { leftAmount: number, burnedPercent: number }
+async function listenToLPTokenSupplyChanges(
+  lpTokenMint: PublicKey,
 ) {
+  console.log(`Subscribing to LP mint changes. Waiting to burn. Mint: ${lpTokenMint.toString()}`)
   return new Promise<void>((resolve, reject) => {
-    connection.onAccountChange(lpTokenAccount, (accInfoBuffer, _) => {
-      const parsed = AccountLayout.decode(accInfoBuffer.data)
-      const newBalance = Number(parsed.amount) / (10 ** mintTxLPTokenBalance.uiTokenAmount.decimals)
-      const totalAmount = (mintTxLPTokenBalance.uiTokenAmount.uiAmount ?? 0)
-      const burnedPercent = (totalAmount - newBalance) / totalAmount
-      lpTokenInfo.leftAmount = newBalance
-      lpTokenInfo.burnedPercent = burnedPercent
-      if (burnedPercent >= 0.999) {
+    connection.onAccountChange(lpTokenMint, (accInfoBuffer, _) => {
+      const lpTokenMintInfo = MintLayout.decode(accInfoBuffer.data.subarray(0, MINT_SIZE))
+      const lastSupply = Number(lpTokenMintInfo.supply) / (10 ** lpTokenMintInfo.decimals)
+      console.log(`LP token mint ${lpTokenMint.toString()} changed. Current supply: ${lastSupply}`)
+      const isBurned = lastSupply <= 100
+      if (isBurned) {
         resolve()
       }
     })
   })
 }
 
-async function getPercentOfBurnedTokensWithRetry(
+async function checkIfLPTokenBurnedWithRetry(
   attempts: number,
   waitBeforeAttempt: number,
-  lpTokenAccount: PublicKey,
-  lpTokenMint: string,
-  mintTxLPTokenBalance: TokenBalance,
-): Promise<number> {
+  lpTokenMint: PublicKey,
+): Promise<boolean> {
   let attempt = 1
   while (attempt <= attempts) {
     try {
-      const burnedPercent = await getPercentOfBurnedTokens(lpTokenAccount, lpTokenMint, mintTxLPTokenBalance)
-      if (burnedPercent >= 1) {
-        return burnedPercent
+      const supply = await getTokenSupply(lpTokenMint)
+      if (supply <= 100) {
+        return true
       }
       attempt += 1
-      if (attempt > attempts) { return 0 }
+      if (attempt > attempts) { return false }
       await delay(200 + waitBeforeAttempt)
     } catch (e) {
-      console.log(chalk.red(`Failed to get amount of burned LP tokens: ${e}.`))
+      console.log(chalk.red(`Failed to get LP token supply: ${e}.`))
       attempt += 1
-      if (attempt > attempts) { return 0 }
+      if (attempt > attempts) { return false }
       await delay(200 + waitBeforeAttempt)
     }
   }
-  return 0
+  return false
+}
+
+async function getTokenSupply(
+  tokenMint: PublicKey
+): Promise<number> {
+  const accountInfo = await connection.getAccountInfo(tokenMint)
+  if (!accountInfo) {
+    throw error('Couldnt get token mint info')
+  }
+  const lpTokenMintInfo = MintLayout.decode(accountInfo.data.subarray(0, MINT_SIZE))
+  const lastSupply = Number(lpTokenMintInfo.supply) / (10 ** lpTokenMintInfo.decimals)
+  return lastSupply
 }
 
 const BURN_INSTRCUTIONS = new Set(['burnChecked', 'burn'])

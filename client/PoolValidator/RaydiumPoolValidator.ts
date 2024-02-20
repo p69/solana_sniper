@@ -163,7 +163,7 @@ async function validateNewPool(mintTxId: string): Promise<PoolValidationResults 
       }
     }
 
-    if (safetyCheckResults.lockedPercentOfLiqiodity < SAFE_LOCKED_LIQUIDITY_PERCENT) {
+    if (!safetyCheckResults.isliquidityLocked) {
       /// If locked percent of liquidity is less then SAFE_LOCKED_LIQUIDITY_PERCENT
       /// most likely it will be rugged at any time, better to stay away
       return {
@@ -172,115 +172,88 @@ async function validateNewPool(mintTxId: string): Promise<PoolValidationResults 
         poolFeatures: features,
         safetyStatus: 'RED',
         startTimeInEpoch: startTime,
-        reason: `Locked percent of liquidity is ${(safetyCheckResults.lockedPercentOfLiqiodity * 100).toFixed(1)}%`,
+        reason: `Liquidity is not locked`,
         trend: trendResults
       }
     }
 
-    /// When token is mintable but almost 100% LP is locked
-    if (safetyCheckResults.lockedPercentOfLiqiodity >= 0.99) {
-      /// Check percent in pool
-      if (safetyCheckResults.newTokenPoolBalancePercent >= 0.99) {
-        /// When almost all tokens in pool 
-        if (safetyCheckResults.ownershipInfo.isMintable) {
-          /// When token is still mintable
-          /// We can try to get some money out of it          
-          return {
-            pool: poolKeys,
-            poolInfo: info,
-            poolFeatures: features,
-            safetyStatus: 'YELLOW',
-            startTimeInEpoch: startTime,
-            reason: `Most of the tokens are in pool, but token is still mintable`,
-            trend: trendResults
-          }
-        } else {
-          /// When token is not mintable          
-          return {
-            pool: poolKeys,
-            poolInfo: info,
-            poolFeatures: features,
-            safetyStatus: 'GREEN',
-            startTimeInEpoch: startTime,
-            reason: `Liquidity is locked. Token is not mintable. Green light`,
-            trend: trendResults
-          }
-        }
-      } else if (safetyCheckResults.newTokenPoolBalancePercent >= MIN_PERCENT_NEW_TOKEN_INPOOL) {
-        /// When at least MIN_PERCENT_NEW_TOKEN_INPOOL tokens in pool 
-        if (!safetyCheckResults.ownershipInfo.isMintable) {
-          /// If token is not mintable          
-          return {
-            pool: poolKeys,
-            poolInfo: info,
-            poolFeatures: features,
-            safetyStatus: 'YELLOW',
-            startTimeInEpoch: startTime,
-            reason: `At least 80% of the tokens are in pool, and token is not mintable`,
-            trend: trendResults
-          }
-        } if (safetyCheckResults.newTokenPoolBalancePercent >= 0.95) {
-          /// If token is mintable, but should not be dumped fast (from my experience)          
-          return {
-            pool: poolKeys,
-            poolInfo: info,
-            poolFeatures: features,
-            safetyStatus: 'YELLOW',
-            startTimeInEpoch: startTime,
-            reason: `>95% of tokens are in pool, but token is still mintable`,
-            trend: trendResults
-          }
-        } else {
-          /// Many tokens are not in pool and token is mintable. Could be dumped very fast.          
-          return {
-            pool: poolKeys,
-            poolInfo: info,
-            poolFeatures: features,
-            safetyStatus: 'RED',
-            startTimeInEpoch: startTime,
-            reason: `Many tokens are not in pool and token is mintable`,
-            trend: trendResults
-          }
-        }
-      } else {
-        /// Too much new tokens is not in pool. Could be dumped very fast.        
-        return {
-          pool: poolKeys,
-          poolInfo: info,
-          poolFeatures: features,
-          safetyStatus: 'RED',
-          startTimeInEpoch: startTime,
-          reason: `Less then ${MIN_PERCENT_NEW_TOKEN_INPOOL * 100}% of tokens are in pool.`,
-          trend: trendResults
-        }
-      }
-    } else { /// When 10% or less is unlocked
-      /// When token is not mintable
-      if (!safetyCheckResults.ownershipInfo.isMintable) {
-        /// We can try to get some money out of it        
+    if (safetyCheckResults.newTokenPoolBalancePercent >= 0.99) {
+      /// When almost all tokens in pool 
+      if (safetyCheckResults.ownershipInfo.isMintable) {
+        /// When token is still mintable
+        /// We can try to get some money out of it          
         return {
           pool: poolKeys,
           poolInfo: info,
           poolFeatures: features,
           safetyStatus: 'YELLOW',
           startTimeInEpoch: startTime,
-          reason: `10% or less liquidity is unlocked, but token is not mintable`,
+          reason: `Most of the tokens are in pool, but token is still mintable`,
           trend: trendResults
         }
       } else {
-        /// 10% or less of LP is unlocked and token is mintable. Stay away.
-        /// Better to stay away
+        /// When token is not mintable          
+        return {
+          pool: poolKeys,
+          poolInfo: info,
+          poolFeatures: features,
+          safetyStatus: 'GREEN',
+          startTimeInEpoch: startTime,
+          reason: `Liquidity is locked. Token is not mintable. Green light`,
+          trend: trendResults
+        }
+      }
+    } else if (safetyCheckResults.newTokenPoolBalancePercent >= MIN_PERCENT_NEW_TOKEN_INPOOL) {
+      /// When at least MIN_PERCENT_NEW_TOKEN_INPOOL tokens in pool 
+      if (!safetyCheckResults.ownershipInfo.isMintable) {
+        /// If token is not mintable          
+        return {
+          pool: poolKeys,
+          poolInfo: info,
+          poolFeatures: features,
+          safetyStatus: 'YELLOW',
+          startTimeInEpoch: startTime,
+          reason: `At least 80% of the tokens are in pool, and token is not mintable`,
+          trend: trendResults
+        }
+      } if (safetyCheckResults.newTokenPoolBalancePercent >= 0.95) {
+        /// If token is mintable, but should not be dumped fast (from my experience)          
+        return {
+          pool: poolKeys,
+          poolInfo: info,
+          poolFeatures: features,
+          safetyStatus: 'YELLOW',
+          startTimeInEpoch: startTime,
+          reason: `>95% of tokens are in pool, but token is still mintable`,
+          trend: trendResults
+        }
+      } else {
+        /// Many tokens are not in pool and token is mintable. Could be dumped very fast.          
         return {
           pool: poolKeys,
           poolInfo: info,
           poolFeatures: features,
           safetyStatus: 'RED',
           startTimeInEpoch: startTime,
-          reason: `10% or less liquidity is unlocked and token is mintable`,
+          reason: `Many tokens are not in pool and token is mintable`,
           trend: trendResults
         }
       }
+    } else {
+      /// Too much new tokens is not in pool. Could be dumped very fast.        
+      return {
+        pool: poolKeys,
+        poolInfo: info,
+        poolFeatures: features,
+        safetyStatus: 'RED',
+        startTimeInEpoch: startTime,
+        reason: `Less then ${MIN_PERCENT_NEW_TOKEN_INPOOL * 100}% of tokens are in pool.`,
+        trend: trendResults
+      }
     }
+
+
+
   } catch (e) {
     return `error: ${e}`
   }
