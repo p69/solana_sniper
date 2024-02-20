@@ -117,11 +117,12 @@ export async function checkToken(tx: ParsedTransactionWithMeta, pool: LiquidityP
   // Liqidity is not locked, but more than half of supply is in pool
   // Possible that LP token wiill be burned later. Wait for a few hours
   if (!isLiquidityLocked && newTokenPoolBalancePercent >= 0.5) {
-    console.log(chalk.cyan(`All tokens are in pool, but LP tokens aren't burned yet. Start verifying it`))
+    console.log(chalk.cyan(`Pools ${pool.id.toString()}. All tokens are in pool, but LP tokens aren't burned yet. Start verifying it`))
     isLiquidityLocked = await checkLPTokenBurnedOrTimeout(
       new PublicKey(lpTokenMint),
       2 * 60 * 60 * 1000
     )
+    console.log(chalk.cyan(`Pools ${pool.id.toString()}. LP tokens verifyed: ${isLiquidityLocked ? 'Locked' : 'Unlocked'}`))
 
     const lastOtherTokenInfo = await connection.getAccountInfo(otherTokenMint)
     const updatedMintInfo = MintLayout.decode(lastOtherTokenInfo!.data!.subarray(0, MINT_SIZE))
@@ -149,7 +150,8 @@ export async function checkToken(tx: ParsedTransactionWithMeta, pool: LiquidityP
   const symbol = isSOL ? 'SOL' : 'USD';
   const amountInUSD = isSOL ? liquitity * SOL_EXCHANGE_RATE : liquitity
 
-  console.log(chalk.bgBlue(`Real Liquidity ${liquitity} ${symbol}`));
+  console.log(chalk.bgBlue(`Pool ${pool.id.toString()} Real Liquidity ${liquitity} ${symbol}`))
+  console.log(chalk.cyan(`Pools ${pool.id.toString()}. Safety check completed`))
 
   return {
     creator: creatorAddress,
