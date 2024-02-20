@@ -209,6 +209,7 @@ async function listenToLPTokenSupplyChanges(
       console.log(`LP token mint ${lpTokenMint.toString()} changed. Current supply: ${lastSupply}`)
       const isBurned = lastSupply <= 100
       if (isBurned) {
+        console.log(`LP token ${lpTokenMint.toString()} is Burned`)
         resolve()
       }
     })
