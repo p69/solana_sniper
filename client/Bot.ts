@@ -58,11 +58,14 @@ export class TradingBot {
 
 
   private validatorPool = new Piscina({
-    filename: path.resolve(__dirname, './PoolValidator/RaydiumPoolValidator.js')
+    filename: path.resolve(__dirname, './PoolValidator/RaydiumPoolValidator.js'),
+    maxQueue: 'auto',
+    maxThreads: 10,
   });
 
   private traderPool = new Piscina({
-    filename: path.resolve(__dirname, './Trader/Trader.js')
+    filename: path.resolve(__dirname, './Trader/Trader.js'),
+    maxQueue: 'auto',
   })
 
   constructor(connection: Connection) {
