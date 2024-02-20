@@ -145,7 +145,7 @@ export async function retryAsyncFunction<T, Args extends any[]>(
   fn: (...args: Args) => Promise<T>, // Async function to retry
   args: Args,                        // Arguments of the async function
   retries: number = 5,               // Number of retries
-  delay: number = 300               // Delay between retries in milliseconds
+  delayMs: number = 300               // Delay between retries in milliseconds
 ): Promise<T> {
   let lastError: Error | undefined;
 
@@ -155,7 +155,7 @@ export async function retryAsyncFunction<T, Args extends any[]>(
     } catch (error) {
       lastError = error as Error;
       if (attempt < retries - 1) {
-        await new Promise(resolve => setTimeout(resolve, delay)); // Wait for the delay before retrying
+        await delay(delayMs) // Wait for the delay before retrying
       }
     }
   }
