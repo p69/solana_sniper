@@ -1,41 +1,26 @@
-import * as fs from 'fs'
-import * as util from 'util'
 import { Connection, PublicKey } from '@solana/web3.js';
-import path from 'path';
-import Piscina from 'piscina';
 import { findLogEntry } from './PoolValidator/RaydiumPoolParser';
 import chalk from 'chalk';
-import { ValidatePoolData } from './PoolValidator/RaydiumPoolValidator';
+import { ValidatePoolData, validateNewPool } from './PoolValidator/RaydiumPoolValidator';
 import { PoolValidationResults } from './PoolValidator/ValidationResult';
-import { delay, formatDate, printTime } from './Utils';
+import { delay, formatDate } from './Utils';
 import { config } from './Config';
 import { SellResults } from './Trader/SellToken';
 import { SOL_SPL_TOKEN_ADDRESS } from './Trader/Addresses';
-
-// Specify the log file path
-const log_fil_sufix = (new Date()).getUTCSeconds()
-const logFilePath = path.join(__dirname, `/logs/application_${log_fil_sufix}.log`)
-
-
-// Create a write stream for the log file
-const logFileStream = fs.createWriteStream(logFilePath, { flags: 'a' }); // 'a' flag for append mode
-
-// Original console.log function
-const originalConsoleLog = console.log;
-
-// Override console.log
-console.log = (...args: any[]) => {
-  // Format the message as console.log would
-  const message = util.format.apply(null, args) + '\n';
-
-  // Write to the original console.log
-  originalConsoleLog.apply(console, args);
-
-  // Write the formatted message to the log file
-  logFileStream.write(message);
-};
+import { tryPerformTrading } from './Trader/Trader';
 
 const RAYDIUM_PUBLIC_KEY = '675kPX9MHTjS2zt1qfr1NYHuzeLXfQM9H24wFSUt1Mp8';
+
+interface ReadyToTrade {
+  kind: 'OK'
+}
+
+interface NotReadyToTrade {
+  kind: 'BAD',
+  reason: string
+}
+
+type TradingDecision = ReadyToTrade | NotReadyToTrade
 
 export class TradingBot {
   private onLogsSubscriptionId: number | null = null
@@ -57,16 +42,16 @@ export class TradingBot {
   private runningValidations = new Map<string, string>()
 
 
-  private validatorPool = new Piscina({
-    filename: path.resolve(__dirname, './PoolValidator/RaydiumPoolValidator.js'),
-    maxQueue: 'auto',
-    maxThreads: 10,
-  });
+  // private validatorPool = new Piscina({
+  //   filename: path.resolve(__dirname, './PoolValidator/RaydiumPoolValidator.js'),
+  //   maxQueue: 'auto',
+  //   maxThreads: 10,
+  // });
 
-  private traderPool = new Piscina({
-    filename: path.resolve(__dirname, './Trader/Trader.js'),
-    maxQueue: 'auto',
-  })
+  // private traderPool = new Piscina({
+  //   filename: path.resolve(__dirname, './Trader/Trader.js'),
+  //   maxQueue: 'auto',
+  // })
 
   constructor(connection: Connection) {
     this.connection = connection
@@ -113,7 +98,7 @@ export class TradingBot {
         return; // If "init_pc_amount" is not in log entries then it's not LP initialization transaction
       }
 
-      await this.handleNewPoolMintTx(txLogs.signature)
+      this.handleNewPoolMintTx(txLogs.signature)
     });
     console.log(chalk.cyan('Listening to new pools...'))
   }
@@ -148,34 +133,61 @@ export class TradingBot {
     return this.validationErrors
   }
 
-  private async handleNewPoolMintTx(txId: string) {
+  private onError(error: Error) {
+    console.error(error)
+  }
+
+  private onTradingResults(poolId: string, tradeResults: SellResults) {
+    this.completedTrades.push(`Pool: ${poolId}, Trading resulst: ${JSON.stringify(tradeResults)}`)
     if (this.onLogsSubscriptionId === null) { return }
+    this.runningTradesCount--
+    console.log(`Running Traders - current: ${this.runningTradesCount}, max: ${this.maxCountOfSimulteniousTradings} `)
+    console.log(`Pool ${poolId}, trading results: ${JSON.stringify(tradeResults)} `)
 
-    if (this.runningValidatorsCount === config.validatorsLimit) {
-      console.log(chalk.yellow(`Find pool with tx - ${txId} but limit of ${config.validatorsLimit} has been reached. Skipped`))
-      this.skippedPools.push(`Find pool with tx - ${txId} but limit of ${config.validatorsLimit} has been reached. Skipped`)
-      return
+    this.updateWSOLBalance(tradeResults)
+    console.log(chalk.yellow('Got trading results'))
+  }
+
+  private async startTrading(validationResults: PoolValidationResults) {
+    console.log(`Start trading for pool ${validationResults.pool.id}`)
+    this.runningTradesCount++
+    if (this.maxCountOfSimulteniousTradings < this.runningTradesCount) {
+      this.maxCountOfSimulteniousTradings = this.runningTradesCount
     }
-    console.log(chalk.yellow(`Received first mint tx https://solscan.io/tx/${txId}. Start processing.`))
-    const msg: ValidatePoolData = {
-      mintTxId: txId,
-      date: new Date()
+    console.log(`Running Traders - current: ${this.runningTradesCount}, max: ${this.maxCountOfSimulteniousTradings} `)
+    tryPerformTrading(this.connection, validationResults)
+      .then(x => this.onTradingResults(validationResults.pool.id, x))
+      .catch(this.onError)
+  }
+
+  private evaluateTradingDecision(validationResults: PoolValidationResults): TradingDecision {
+    if (validationResults.safetyStatus === 'RED') {
+      const msg = `Pool: ${validationResults.pool.id}, RED token.\n${JSON.stringify(validationResults)}`
+      return { kind: 'BAD', reason: msg }
     }
 
-    this.runningValidatorsCount++
-    if (this.runningValidatorsCount > this.maxCountOfSimulteniousValidators) {
-      this.maxCountOfSimulteniousValidators = this.runningValidatorsCount
+    if (validationResults.safetyStatus !== 'GREEN') {
+      if (validationResults.trend!.volatility > config.safePriceValotilityRate) {
+        const msg = `Pool: ${validationResults.pool.id}, Not GREEN token and Price volatility is to high ${validationResults.trend!.volatility}`
+        return { kind: 'BAD', reason: msg }
+      }
+
+      if (validationResults.trend!.buysCount < config.safeBuysCountInFirstMinute) {
+        const msg = `Pool: ${validationResults.pool.id}, Not GREEN token and Very little BUY txs ${validationResults.trend!.buysCount}`
+        return { kind: 'BAD', reason: msg }
+      }
     }
-    console.log(`Running Validators - current: ${this.runningValidatorsCount}, max: ${this.maxCountOfSimulteniousValidators}`)
 
-    this.runningValidations.set(txId, `Running iniitial validation.`)
+    return { kind: 'OK' }
+  }
 
-    let validationResults: PoolValidationResults | string = await this.validatorPool.run(msg)
-    if (this.onLogsSubscriptionId === null) { return }
+  private async onPoolValidationResults(txId: string, validationResults: PoolValidationResults | string) {
     this.runningValidatorsCount--
+    if (this.onLogsSubscriptionId === null) { return }
 
     this.runningValidations.set(txId, `Initial validation results: ${JSON.stringify(validationResults)}`)
 
+    // When error happened
     if (typeof validationResults === `string`) {
       console.log(`Failed to validate pool by first min tx https://solscan.io/tx/${txId}\nValidaition Error: ${validationResults}`)
       this.skippedPools.push(`Failed to validate pool by first min tx https://solscan.io/tx/${txId}\nValidaition Error: ${validationResults}`)
@@ -186,6 +198,7 @@ export class TradingBot {
     }
 
     console.log(chalk.yellow(`Validation results for pool ${validationResults.pool.id}`))
+    // If pool is postponed
     if (validationResults.startTimeInEpoch) {
       console.log(`Pool ${validationResults.pool.id} is postponed to ${formatDate(new Date(validationResults.startTimeInEpoch))}`)
       this.runningValidations.set(txId, `Pool is postponed to ${formatDate(new Date(validationResults.startTimeInEpoch))} wait for it. ${JSON.stringify(validationResults)}`)
@@ -197,16 +210,21 @@ export class TradingBot {
         if (this.onLogsSubscriptionId === null) { return }
         console.log(`Running Validators - current: ${this.runningValidatorsCount}, max: ${this.maxCountOfSimulteniousValidators}`)
         this.runningValidations.set(txId, `Postponed pool has started, performing another validation. ${JSON.stringify(validationResults)}`)
-        validationResults = await this.validatorPool.run(msg)
+        validationResults = await validateNewPool(this.connection, txId)
         this.runningValidations.set(txId, `Received updated results for postponed pool. ${JSON.stringify(validationResults)}`)
         if (this.onLogsSubscriptionId === null) { return }
         console.log(`Got updated results`)
       } else {
+        this.skippedPools.push(`Pool ${validationResults.pool.id} Skipped because it's postponed for too long.`)
+        this.runningValidations.delete(txId)
+        this.runningValidatorsCount--
         console.log(`It's too long, don't wait. Need to add more robust scheduler`)
+        return
       }
     }
 
     this.runningValidations.delete(txId)
+    this.runningValidatorsCount--
 
     if (typeof validationResults === `string`) {
       console.log(`Failed to validate postponed Pool TxId ${txId} with error: ${validationResults}`)
@@ -223,44 +241,36 @@ export class TradingBot {
     console.log(`Pool ${validationResults.pool.id} validation results reason is ${validationResults.reason}`)
     console.log(`Pool ${validationResults.pool.id} trend is ${JSON.stringify(validationResults.trend)}`)
 
-    if (validationResults.safetyStatus === 'RED') {
-      console.log(chalk.red('Red token. Skipping'))
-      this.skippedPools.push(`Pool: ${validationResults.pool.id}, mintTx: ${txId} RED token.\n${JSON.stringify(validationResults)}`)
+    const tradingDecision = this.evaluateTradingDecision(validationResults)
+    switch (tradingDecision.kind) {
+      case 'BAD': {
+        console.log(tradingDecision.reason)
+        this.skippedPools.push(tradingDecision.kind)
+      }
+      case 'OK': this.startTrading(validationResults)
+    }
+  }
+
+  private async handleNewPoolMintTx(txId: string) {
+    if (this.onLogsSubscriptionId === null) { return }
+
+    if (this.runningValidatorsCount === config.validatorsLimit) {
+      console.log(chalk.yellow(`Find pool with tx - ${txId} but limit of ${config.validatorsLimit} has been reached. Skipped`))
+      this.skippedPools.push(`Find pool with tx - ${txId} but limit of ${config.validatorsLimit} has been reached. Skipped`)
       return
     }
+    console.log(chalk.yellow(`Received first mint tx https://solscan.io/tx/${txId}. Start processing.`))
 
-    if (validationResults.safetyStatus !== 'GREEN') {
-      if (validationResults.trend!.volatility > config.safePriceValotilityRate) {
-        const msg = `Pool: ${validationResults.pool.id}, mintTx: ${txId}.\nNot GREEN token and Price volatility is to high ${validationResults.trend!.volatility}`
-        console.log(msg)
-        this.skippedPools.push(msg)
-        return
-      }
-
-      if (validationResults.trend!.buysCount < config.safeBuysCountInFirstMinute) {
-        const msg = `Pool: ${validationResults.pool.id}, mintTx: ${txId}.\nNot GREEN token and Very little BUY txs ${validationResults.trend!.buysCount}`
-        console.log(msg)
-        this.skippedPools.push(msg)
-        return
-      }
+    this.runningValidatorsCount++
+    if (this.runningValidatorsCount > this.maxCountOfSimulteniousValidators) {
+      this.maxCountOfSimulteniousValidators = this.runningValidatorsCount
     }
+    console.log(`Running Validators - current: ${this.runningValidatorsCount}, max: ${this.maxCountOfSimulteniousValidators}`)
 
+    this.runningValidations.set(txId, `Running iniitial validation.`)
 
-    console.log(`Start trading for pool ${validationResults.pool.id}`)
-    this.runningTradesCount++
-    if (this.maxCountOfSimulteniousTradings < this.runningTradesCount) {
-      this.maxCountOfSimulteniousTradings = this.runningTradesCount
-    }
-    console.log(`Running Traders - current: ${this.runningTradesCount}, max: ${this.maxCountOfSimulteniousTradings} `)
-    const tradeResults: SellResults = await this.traderPool.run(validationResults)
-    this.completedTrades.push(`Pool: ${validationResults.pool.id}, mintTx: ${txId}.\nTrading resulst: ${JSON.stringify(tradeResults)}`)
-    if (this.onLogsSubscriptionId === null) { return }
-    this.runningTradesCount--
-    console.log(`Running Traders - current: ${this.runningTradesCount}, max: ${this.maxCountOfSimulteniousTradings} `)
-    console.log(`Pool ${validationResults.pool.id}, trading results: ${JSON.stringify(tradeResults)} `)
-
-    this.updateWSOLBalance(tradeResults)
-
-    console.log(chalk.yellow('Got trading results'))
+    validateNewPool(this.connection, txId)
+      .then(res => this.onPoolValidationResults(txId, res))
+      .catch(this.onError)
   }
 }

@@ -1,6 +1,5 @@
 import * as dotenv from 'dotenv'
 dotenv.config()
-import { connection } from './Connection'
 import fs from 'fs'
 import path from 'path'
 import csv from 'csv-parser'
@@ -8,20 +7,28 @@ import { TradeRecord, TradeType, fetchLatestTrades } from './TradesFetcher'
 import { ChartTrend, analyzeTrend, findDumpingRecord } from './TradesAnalyzer'
 import { PoolKeys, fetchPoolKeysForLPInitTransactionHash } from '../PoolValidator/RaydiumPoolParser'
 import { config } from '../Config'
+import { Connection, PublicKey } from '@solana/web3.js'
+import { AccountLayout } from '@solana/spl-token'
+
+const connection = new Connection(config.rpcHttpURL, {
+  wsEndpoint: config.rpcWsURL
+})
 
 const raydiumPoolAuthority = "5Q544fKrFoe6tsEbD7S8EmxGTJYAKtTVhAW5Q5pge4j1"
 
 const poolsToGetPriceChanges = [
-  'ASUUfLjhtacBbjx7KswSraRYvZMUdbWsjMNjDYngzaex',
-  'DoNtsgPxYZfpq5cpBFH1PqAwhJDU9G7RCG1EPgCUiwRx',
-  'A3isw2Xco9TtpvKgm9j7UcjUoGpCP4FfhrnXPGnxgKrQ',
-  'Es6nqcHuFvj8VNJ1obfwkoD6zAgwvdY2WCa4EGsPrfZU',
-  'AqaXfDnGCzTK14U69QjWWThDCEBD5iiwvpM5dMCxeWBj',
-  '3ZMzLJMozbPKex7jyhsQUwDYxecJNWutdKEhoDsBmRjk',
-  '2QhsDSRz9fYCmg48qNyFfSLaTp4K8XcNKuCBeTaH8ns5',
-  '5CrZMaLVzDaZiinmPYM9ntAAqsmAvH4JKAKDczYRbXdd',
-  'CzMUQP2fYvz5AF1wWmU19YhbCwhYhhCe9JiLiZjk3a8r',
-  'HjQwYyivK56MYnKkgjSMe5bvvHWtTQziZnbdnALNbjXN'
+  // 'ASUUfLjhtacBbjx7KswSraRYvZMUdbWsjMNjDYngzaex',
+  // 'DoNtsgPxYZfpq5cpBFH1PqAwhJDU9G7RCG1EPgCUiwRx',
+  // 'A3isw2Xco9TtpvKgm9j7UcjUoGpCP4FfhrnXPGnxgKrQ',
+  // 'Es6nqcHuFvj8VNJ1obfwkoD6zAgwvdY2WCa4EGsPrfZU',
+  // 'AqaXfDnGCzTK14U69QjWWThDCEBD5iiwvpM5dMCxeWBj',
+  // '3ZMzLJMozbPKex7jyhsQUwDYxecJNWutdKEhoDsBmRjk',
+  // '2QhsDSRz9fYCmg48qNyFfSLaTp4K8XcNKuCBeTaH8ns5',
+  // '5CrZMaLVzDaZiinmPYM9ntAAqsmAvH4JKAKDczYRbXdd',
+  // 'CzMUQP2fYvz5AF1wWmU19YhbCwhYhhCe9JiLiZjk3a8r',
+  // 'HjQwYyivK56MYnKkgjSMe5bvvHWtTQziZnbdnALNbjXN',
+  // '6Mms42RMhkc1xkEaNGiqFasiXKD1mmYj9LwgHJecU6D4',
+  '9tP6LFHbJnikaRRCxxYAtKNeRsVVtvNjDxNVNmg1FY4g'
 ]
 
 const poolFirstTxs = [
@@ -34,11 +41,22 @@ const poolFirstTxs = [
   '5zHKMquUARQPWETqe9tnA1hyhMNE2mtmZ8gFN5xhBhQyRgJkZ1ZEf1k2J5mfq2oeniUt2hWoUPxANALMxnrKRGCq',
   'Cd4kA68ofmeRYqYA2XcCg1xhyZZyz9FHCRTpCUXzBZhrsEBFqsQTQpJT75CiXNG8oXn65CUG1T6En496Ptp2ub8',
   '2VX5P1mRNF7w5mMtMtNBNg7icZ5CVokPkeFzUQthtJmkemcMvMXUGevNkcB9aKC5W5KQKQgSqBLD8Rrpu5D6Ms5j',
-  '4NP2XjcdtaGTvQTsf88isCh4yQPw4pHgfmEycaJ7EkVnLSrveSTJi6EjcHH2ZpQgqSmfZAh17fKtnsogHSBwDukw'
+  '4NP2XjcdtaGTvQTsf88isCh4yQPw4pHgfmEycaJ7EkVnLSrveSTJi6EjcHH2ZpQgqSmfZAh17fKtnsogHSBwDukw',
+  '4k4GFMnhM3PXBeykRRLPTnqp74VHnPKKR7UBsqEcEz84vyg9ryvHk5EHbiVH5BxqAboCdUUiHNRvpoXCPe5q6qHg',
+  '4NYWxJsyXzRWo4pu3u1V6AEoNbB4n8wqaQzSB95QCfyiTKCvzH69hL4thZbuNQKSJXPHjLECiq4SnotYK9e9nWUh'
 ]
 
+async function testLPTOkenAccInfo() {
+  const tokenAccAddress = new PublicKey('GwNzvvq8LwRXBuoZqAKqCAwpS6Y4RgKxsMDAas6z722U')
+  const accInfo = await connection.getAccountInfo(tokenAccAddress)
+  if (accInfo) {
+    const parsed = AccountLayout.decode(accInfo.data)
+    console.log(`${parsed}`)
+  }
+}
+
 async function test() {
-  let i = 0
+  let i = 11
   const parsed: { poolId: string, trades: TradeRecord[] }[] = []
   while (i < poolFirstTxs.length) {
     const { poolKeys } = await fetchPoolKeysForLPInitTransactionHash(connection, poolFirstTxs[i])
@@ -55,13 +73,7 @@ async function test() {
 async function loadSaved() {
   for (let poolId of poolsToGetPriceChanges) {
     const records = await parseCSV(poolId)
-    const firstEpochTime = records[0].epochTime
-    let lastEpochTime = firstEpochTime + 60
     const dumpRes = findDumpingRecord(records)
-    if (dumpRes) {
-      lastEpochTime = dumpRes[0].epochTime - 1
-    }
-
     const trend = analyzeTrend(records)
     console.log(`${poolId} - ${trendToColor(trend.type, trend.buysCount, trend.volatility)}, rate=${trend.averageGrowthRate}, volatility=${trend.volatility}`)
   }
@@ -77,8 +89,9 @@ function trendToColor(trend: ChartTrend, buysCount: number, volatility: number):
   }
 }
 
-loadSaved()
+// loadSaved()
 // test()
+testLPTOkenAccInfo()
 
 async function parseCSV(poolId: string): Promise<TradeRecord[]> {
   return new Promise((resolve, _) => {

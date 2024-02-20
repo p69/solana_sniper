@@ -18,7 +18,7 @@ interface Config {
   appPort: number,
 }
 
-export const config: Config = {
+export let config: Config = {
   rpcHttpURL: process.env.RPC_URL!,
   rpcWsURL: process.env.WS_URL!,
   simulateOnly: process.env.SIMULATION_ONLY === 'true',

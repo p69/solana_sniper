@@ -1,12 +1,11 @@
 import { ParsedTransactionWithMeta, PublicKey, Connection, TokenBalance } from '@solana/web3.js'
 import { LiquidityPoolKeysV4, WSOL } from '@raydium-io/raydium-sdk'
-import { AccountLayout, getAssociatedTokenAddressSync, MINT_SIZE, MintLayout } from '@solana/spl-token'
+import { getAssociatedTokenAddressSync, MINT_SIZE, MintLayout } from '@solana/spl-token'
 import { BURN_ACC_ADDRESS } from './Addresses'
 import { KNOWN_SCAM_ACCOUNTS } from './BlackLists'
 import { BN } from "@project-serum/anchor";
 import chalk from 'chalk'
 import { delay, timeout } from '../Utils'
-import { connection } from './Connection'
 import { error } from 'console'
 
 const RAYDIUM_OWNER_AUTHORITY = '5Q544fKrFoe6tsEbD7S8EmxGTJYAKtTVhAW5Q5pge4j1';
@@ -33,7 +32,7 @@ export type SafetyCheckResult = {
   ownershipInfo: OwnershipInfo,
 }
 
-export async function checkToken(tx: ParsedTransactionWithMeta, pool: LiquidityPoolKeysV4): Promise<SafetyCheckResult | null> {
+export async function checkToken(connection: Connection, tx: ParsedTransactionWithMeta, pool: LiquidityPoolKeysV4): Promise<SafetyCheckResult | null> {
   if (!tx.meta || !tx.meta.innerInstructions || !tx.meta.preTokenBalances || !tx.meta.postTokenBalances) {
     console.log(`meta is null ${tx.meta === null}`)
     console.log(`innerInstructions is null ${tx.meta?.innerInstructions === null || tx.meta?.innerInstructions === undefined}`)
@@ -112,13 +111,14 @@ export async function checkToken(tx: ParsedTransactionWithMeta, pool: LiquidityP
   }
 
 
-  let isLiquidityLocked = await checkIfLPTokenBurnedWithRetry(3, 500, new PublicKey(lpTokenMint))
+  let isLiquidityLocked = await checkIfLPTokenBurnedWithRetry(connection, 3, 500, new PublicKey(lpTokenMint))
 
   // Liqidity is not locked, but more than half of supply is in pool
   // Possible that LP token wiill be burned later. Wait for a few hours
   if (!isLiquidityLocked && newTokenPoolBalancePercent >= 0.5) {
     console.log(chalk.cyan(`Pools ${pool.id.toString()}. All tokens are in pool, but LP tokens aren't burned yet. Start verifying it`))
     isLiquidityLocked = await checkLPTokenBurnedOrTimeout(
+      connection,
       new PublicKey(lpTokenMint),
       2 * 60 * 60 * 1000
     )
@@ -181,13 +181,14 @@ function reduceBalancesToTokensSet(balances: TokenBalance[]): Set<string> {
 }
 
 async function checkLPTokenBurnedOrTimeout(
+  connection: Connection,
   lpTokenMint: PublicKey,
   timeoutInMillis: number,
 ): Promise<boolean> {
   let isBurned = false
   try {
     await Promise.race([
-      listenToLPTokenSupplyChanges(lpTokenMint),
+      listenToLPTokenSupplyChanges(connection, lpTokenMint),
       timeout(timeoutInMillis)
     ])
 
@@ -199,6 +200,7 @@ async function checkLPTokenBurnedOrTimeout(
 }
 
 async function listenToLPTokenSupplyChanges(
+  connection: Connection,
   lpTokenMint: PublicKey,
 ) {
   console.log(`Subscribing to LP mint changes. Waiting to burn. Mint: ${lpTokenMint.toString()}`)
@@ -217,6 +219,7 @@ async function listenToLPTokenSupplyChanges(
 }
 
 async function checkIfLPTokenBurnedWithRetry(
+  connection: Connection,
   attempts: number,
   waitBeforeAttempt: number,
   lpTokenMint: PublicKey,
@@ -224,7 +227,7 @@ async function checkIfLPTokenBurnedWithRetry(
   let attempt = 1
   while (attempt <= attempts) {
     try {
-      const supply = await getTokenSupply(lpTokenMint)
+      const supply = await getTokenSupply(connection, lpTokenMint)
       if (supply <= 100) {
         return true
       }
@@ -242,6 +245,7 @@ async function checkIfLPTokenBurnedWithRetry(
 }
 
 async function getTokenSupply(
+  connection: Connection,
   tokenMint: PublicKey
 ): Promise<number> {
   const accountInfo = await connection.getAccountInfo(tokenMint)
@@ -256,6 +260,7 @@ async function getTokenSupply(
 const BURN_INSTRCUTIONS = new Set(['burnChecked', 'burn'])
 
 async function getPercentOfBurnedTokens(
+  connection: Connection,
   lpTokenAccount: PublicKey,
   lpTokenMint: string,
   mintTxLPTokenBalance: TokenBalance,

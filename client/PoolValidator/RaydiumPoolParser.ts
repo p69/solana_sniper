@@ -9,7 +9,6 @@ import {
 } from "@solana/web3.js";
 import chalk from "chalk";
 import { delay } from "../Utils";
-import { connection } from './Connection'
 
 const RAYDIUM_POOL_V4_PROGRAM_ID = '675kPX9MHTjS2zt1qfr1NYHuzeLXfQM9H24wFSUt1Mp8';
 const SERUM_OPENBOOK_PROGRAM_ID = 'srmqPvymJeFKQ4zGQed1GFppgkRHL9kaELCbyksJtPX';
@@ -62,7 +61,7 @@ export async function fetchPoolKeysForLPInitTransactionHash(connection: Connecti
     throw new Error('Failed to fetch transaction with signature ' + txSignature);
   }
   const poolInfo = parsePoolInfoFromLpTransaction(tx);
-  const marketInfo = await fetchMarketInfo(poolInfo.marketId);
+  const marketInfo = await fetchMarketInfo(connection, poolInfo.marketId);
 
   const keys = {
     id: poolInfo.id.toString(),
@@ -127,7 +126,7 @@ async function retryGetParsedTransaction(
   }
 }
 
-async function fetchMarketInfo(marketId: PublicKey) {
+async function fetchMarketInfo(connection: Connection, marketId: PublicKey) {
   const marketAccountInfo = await connection.getAccountInfo(marketId);
   if (!marketAccountInfo) {
     throw new Error('Failed to fetch market info for market id ' + marketId.toBase58());

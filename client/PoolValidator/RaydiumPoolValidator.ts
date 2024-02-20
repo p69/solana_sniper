@@ -1,7 +1,6 @@
 import { PoolValidationResults, PoolFeatures, TokenSafetyStatus } from './ValidationResult'
 import { fetchPoolKeysForLPInitTransactionHash } from './RaydiumPoolParser'
 import { Liquidity, LiquidityPoolInfo, LiquidityPoolKeysV4, LiquidityPoolStatus } from '@raydium-io/raydium-sdk'
-import { connection } from './Connection'
 import { checkToken } from './RaydiumSafetyCheck'
 import { convertStringKeysToDataKeys, delay, retryAsyncFunction, retryAsyncFunctionOrDefault } from '../Utils'
 import { Connection } from '@solana/web3.js'
@@ -14,43 +13,18 @@ export type ValidatePoolData = {
   date: Date,
 }
 
-module.exports = async (data: ValidatePoolData) => {
-  console.log(`Receive message in validation worker. TxId: ${data.mintTxId}.`)
-  const validationResults = await validateNewPool(data.mintTxId)
-  console.log(`Finished validation in validation worker. TxId: ${data.mintTxId}.`)
-  return validationResults
-}
+// module.exports = async (data: ValidatePoolData) => {
+//   console.log(`Receive message in validation worker. TxId: ${data.mintTxId}.`)
+//   const validationResults = await validateNewPool(data.mintTxId)
+//   console.log(`Finished validation in validation worker. TxId: ${data.mintTxId}.`)
+//   return validationResults
+// }
 
-async function tryParseLiquidityPoolInfo(connection: Connection, poolKeys: LiquidityPoolKeysV4, attempt: number = 1, maxAttempts: number = 5): Promise<LiquidityPoolInfo | null> {
+export async function validateNewPool(connection: Connection, mintTxId: string): Promise<PoolValidationResults | string> {
   try {
-    console.log(`Getting LP info attempt ${attempt}.`)
-    const info = await Liquidity.fetchInfo({ connection: connection, poolKeys: poolKeys })
-    if (info !== null) {
-      console.log(`Successfully fetched LP info from attempt ${attempt}`)
-      return info; // Return the transaction if it's not null
-    } else if (attempt < maxAttempts) {
-      console.log(`Fetching LP info attempt ${attempt} failed, retrying...`)
-      await delay(200) // Wait for the specified delay
-      return tryParseLiquidityPoolInfo(connection, poolKeys, attempt + 1, maxAttempts)
-    } else {
-      console.log('Max attempts of fetching LP info reached, returning null')
-      return null; // Return null if max attempts are reached
-    }
-  } catch (error) {
-    console.error(`Fetching LP info attempt ${attempt} failed with error: ${error}, retrying...`)
-    if (attempt < maxAttempts) {
-      await delay(200) // Wait for the specified delay // Wait for the specified delay before retrying
-      return tryParseLiquidityPoolInfo(connection, poolKeys, attempt + 1, maxAttempts)
-    } else {
-      console.log('Max attempts of fetching LP info reached, returning null')
-      return null; // Return null if max attempts are reached
-    }
-  }
-}
-
-async function validateNewPool(mintTxId: string): Promise<PoolValidationResults | string> {
-  try {
+    console.log(`Start validationg. TxId: ${mintTxId}.`)
     const { poolKeys, mintTransaction } = await fetchPoolKeysForLPInitTransactionHash(connection, mintTxId) // With poolKeys you can do a swap
+    console.log(`Received pool info ${poolKeys.id} For mint TxId: ${mintTxId}.`)
     //TODO: notify state listener
     const binaryPoolKeys = convertStringKeysToDataKeys(poolKeys)
     const info = await tryParseLiquidityPoolInfo(connection, binaryPoolKeys)
@@ -79,7 +53,7 @@ async function validateNewPool(mintTxId: string): Promise<PoolValidationResults 
       }
     }
 
-    const safetyCheckResults = await checkToken(mintTransaction, binaryPoolKeys)
+    const safetyCheckResults = await checkToken(connection, mintTransaction, binaryPoolKeys)
     const latestTrades = await retryAsyncFunctionOrDefault(fetchLatestTrades, [connection, poolKeys], [])
     const dumpRes = findDumpingRecord(latestTrades)
     if (dumpRes !== null) {
@@ -258,5 +232,32 @@ async function validateNewPool(mintTxId: string): Promise<PoolValidationResults 
 
   } catch (e) {
     return `error: ${e}`
+  }
+}
+
+async function tryParseLiquidityPoolInfo(connection: Connection, poolKeys: LiquidityPoolKeysV4, attempt: number = 1, maxAttempts: number = 5): Promise<LiquidityPoolInfo | null> {
+  try {
+    console.log(`Getting LP info attempt ${attempt}.`)
+    const info = await Liquidity.fetchInfo({ connection: connection, poolKeys: poolKeys })
+    if (info !== null) {
+      console.log(`Successfully fetched LP info from attempt ${attempt}`)
+      return info; // Return the transaction if it's not null
+    } else if (attempt < maxAttempts) {
+      console.log(`Fetching LP info attempt ${attempt} failed, retrying...`)
+      await delay(200) // Wait for the specified delay
+      return tryParseLiquidityPoolInfo(connection, poolKeys, attempt + 1, maxAttempts)
+    } else {
+      console.log('Max attempts of fetching LP info reached, returning null')
+      return null; // Return null if max attempts are reached
+    }
+  } catch (error) {
+    console.error(`Fetching LP info attempt ${attempt} failed with error: ${error}, retrying...`)
+    if (attempt < maxAttempts) {
+      await delay(200) // Wait for the specified delay // Wait for the specified delay before retrying
+      return tryParseLiquidityPoolInfo(connection, poolKeys, attempt + 1, maxAttempts)
+    } else {
+      console.log('Max attempts of fetching LP info reached, returning null')
+      return null; // Return null if max attempts are reached
+    }
   }
 }

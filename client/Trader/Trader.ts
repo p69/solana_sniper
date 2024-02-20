@@ -5,12 +5,12 @@ import { SOL_SPL_TOKEN_ADDRESS, PAYER, OWNER_ADDRESS } from "./Addresses"
 import { DANGEROUS_EXIT_STRATEGY, ExitStrategy, RED_TEST_EXIT_STRATEGY, SAFE_EXIT_STRATEGY } from './ExitStrategy'
 import { TradeRecord, fetchLatestTrades } from './TradesFetcher'
 import { convertStringKeysToDataKeys, formatDate, retryAsyncFunctionOrDefault } from '../Utils'
-import { connection } from './Connection'
 import { buyToken } from './BuyToken'
 import { getAssociatedTokenAddressSync, TOKEN_PROGRAM_ID } from '@solana/spl-token'
 import { SellResults, sellToken } from './SellToken'
 import { TrendAnalisis, analyzeTrend, findDumpingRecord } from './TradesAnalyzer'
 import { PoolKeys } from '../PoolValidator/RaydiumPoolParser'
+import { Connection } from '@solana/web3.js'
 
 export type TraderResults = {
   boughtAmountInSOL: number | null,
@@ -20,12 +20,12 @@ export type TraderResults = {
   error: string | null
 }
 
-module.exports = async (data: PoolValidationResults) => {
-  const sellResults = await tryPerformTrading(data)
-  return sellResults
-}
+// module.exports = async (data: PoolValidationResults) => {
+//   const sellResults = await tryPerformTrading(data)
+//   return sellResults
+// }
 
-async function tryPerformTrading(validationResults: PoolValidationResults): Promise<SellResults> {
+export async function tryPerformTrading(connection: Connection, validationResults: PoolValidationResults): Promise<SellResults> {
   if (validationResults.safetyStatus === 'RED') {
     console.log('RED token. Skipping')
     return { kind: 'FAILED', reason: 'RED coin', txId: null, boughtForSol: null, buyTime: null }
@@ -50,7 +50,7 @@ async function tryPerformTrading(validationResults: PoolValidationResults): Prom
   const exitStrategy = getExitStrategy(validationResults.safetyStatus)!
 
   //Verify trend again before buyng
-  const currentTrendResults = await getCurrentTrend(validationResults.pool)
+  const currentTrendResults = await getCurrentTrend(connection, validationResults.pool)
   console.log(`Pool ${pool.id.toString()}. Trend before buying: ${JSON.stringify(currentTrendResults)}`)
   if (currentTrendResults.dumpTxs) {
     //Dumped
@@ -89,7 +89,7 @@ async function tryPerformTrading(validationResults: PoolValidationResults): Prom
   return sellResults
 }
 
-async function getCurrentTrend(poolKeys: PoolKeys): Promise<{ dumpTxs: [TradeRecord, TradeRecord] | null, analysis: TrendAnalisis | null }> {
+async function getCurrentTrend(connection: Connection, poolKeys: PoolKeys): Promise<{ dumpTxs: [TradeRecord, TradeRecord] | null, analysis: TrendAnalisis | null }> {
   const latestTrades = await retryAsyncFunctionOrDefault(fetchLatestTrades, [connection, poolKeys, 200], [])
   const dumpRes = findDumpingRecord(latestTrades)
   if (dumpRes !== null) {

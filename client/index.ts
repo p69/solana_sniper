@@ -1,7 +1,11 @@
 import express, { Request, Response } from 'express'
 import { config } from './Config'
-import { connection } from './PoolValidator/Connection'
+import { Connection } from '@solana/web3.js'
 import { TradingBot } from './Bot'
+
+const connection = new Connection(config.rpcHttpURL, {
+  wsEndpoint: config.rpcWsURL
+})
 
 
 const app = express()
