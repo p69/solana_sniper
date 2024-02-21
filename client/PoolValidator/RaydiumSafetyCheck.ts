@@ -187,7 +187,7 @@ async function checkLPTokenBurnedOrTimeout(
 ): Promise<boolean> {
   let isBurned = false
   try {
-    await Promise.race([
+    isBurned = await Promise.race([
       listenToLPTokenSupplyChanges(connection, lpTokenMint),
       timeout(timeoutInMillis)
     ])
@@ -202,9 +202,9 @@ async function checkLPTokenBurnedOrTimeout(
 async function listenToLPTokenSupplyChanges(
   connection: Connection,
   lpTokenMint: PublicKey,
-) {
+): Promise<boolean> {
   console.log(`Subscribing to LP mint changes. Waiting to burn. Mint: ${lpTokenMint.toString()}`)
-  return new Promise<void>((resolve, reject) => {
+  return new Promise((resolve, reject) => {
     connection.onAccountChange(lpTokenMint, (accInfoBuffer, _) => {
       const lpTokenMintInfo = MintLayout.decode(accInfoBuffer.data.subarray(0, MINT_SIZE))
       const lastSupply = Number(lpTokenMintInfo.supply) / (10 ** lpTokenMintInfo.decimals)
@@ -212,7 +212,7 @@ async function listenToLPTokenSupplyChanges(
       const isBurned = lastSupply <= 100
       if (isBurned) {
         console.log(`LP token ${lpTokenMint.toString()} is Burned`)
-        resolve()
+        resolve(isBurned)
       }
     })
   })
