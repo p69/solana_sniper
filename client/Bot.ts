@@ -1,18 +1,17 @@
 import { Connection, Logs, PublicKey } from '@solana/web3.js';
-import { PoolKeys, fetchPoolKeysForLPInitTransactionHash, findLogEntry } from './PoolValidator/RaydiumPoolParser';
+import { findLogEntry } from './PoolValidator/RaydiumPoolParser';
 import chalk from 'chalk';
-import { ValidatePoolData, PoolValidationResults, parsePoolCreationTx, PoolPostponed, ParsedPoolCreationTx, checkIfPoolPostponed, checkIfSwapEnabled, evaluateSafetyState, checkLatestTrades, TradingInfo } from './PoolValidator/RaydiumPoolValidator';
+import { parsePoolCreationTx, PoolPostponed, ParsedPoolCreationTx, checkIfPoolPostponed, checkIfSwapEnabled, evaluateSafetyState, checkLatestTrades, TradingInfo } from './PoolValidator/RaydiumPoolValidator';
 import { delay, formatDate } from './Utils';
 import { config } from './Config';
 import { SellResults } from './Trader/SellToken';
 import { SOL_SPL_TOKEN_ADDRESS } from './Trader/Addresses';
 import { tryPerformTrading } from './Trader/Trader';
-import { EMPTY, Observable, Subject, buffer, bufferCount, concatWith, distinct, empty, filter, from, iif, map, mergeAll, mergeMap, onErrorResumeNextWith, single, switchMap, timeInterval, windowCount } from 'rxjs';
-import { checkLPTokenBurnedOrTimeout, checkToken, getTokenOwnershipInfo, PoolSafetyData, SafetyCheckComplete, SafetyCheckResult, WaitLPBurning, WaitLPBurningComplete, WaitLPBurningTooLong } from './PoolValidator/RaydiumSafetyCheck';
-import { LiquidityPoolKeysV4, WSOL } from '@raydium-io/raydium-sdk';
-import { MINT_SIZE, MintLayout } from '@solana/spl-token';
-import { boolean } from 'yargs';
+import { EMPTY, Observable, Subject, concatWith, distinct, filter, from, map, mergeAll, mergeMap, switchMap, windowCount } from 'rxjs';
+import { checkLPTokenBurnedOrTimeout, checkToken, getTokenOwnershipInfo, PoolSafetyData, SafetyCheckComplete, WaitLPBurning, WaitLPBurningComplete, WaitLPBurningTooLong } from './PoolValidator/RaydiumSafetyCheck';
 import { TokenSafetyStatus } from './PoolValidator/ValidationResult';
+import { onFinishTrading, onPoolDataParsed, onPoolValidationChanged, onPoolValidationEvaluated, onStartGettingTrades, onStartTrading, onTradesEvaluated } from './StateAggregator/ConsoleOutput';
+
 
 const RAYDIUM_PUBLIC_KEY = '675kPX9MHTjS2zt1qfr1NYHuzeLXfQM9H24wFSUt1Mp8';
 
@@ -36,16 +35,7 @@ export class TradingBot {
     current: 1,
     totalProfit: 0
   }
-  private seenTransactions = new Set();
-  private runningTradesCount = 0
-  private maxCountOfSimulteniousTradings = 0
-  private runningValidatorsCount = 0
-  private maxCountOfSimulteniousValidators = 0
-  private skippedPools: string[] = []
-  private allValidatedPools = new Map<string, string>()
-  private completedTrades: string[] = []
-  private validationErrors: string[] = []
-  private runningValidations = new Map<string, string>()
+
   validationSub: any;
   parseResSub: any;
   pushToTradingTrendSub: any;
@@ -97,6 +87,7 @@ export class TradingBot {
   private safetyCheckCompleteSubject = new Subject<SafetyCheckComplete | WaitLPBurningComplete>()
   private readyToTradeSubject = new Subject<{ status: TokenSafetyStatus, data: PoolSafetyData }>()
   private skippedPoolsSubject = new Subject<{ data: ParsedPoolCreationTx | PoolSafetyData, reason: string }>()
+  private logsSubject = new Subject<{ data: ParsedPoolCreationTx | PoolSafetyData, reason: string }>()
   private NEW_POOLS_BUFFER = 10
   async start() {
 
@@ -123,6 +114,7 @@ export class TradingBot {
       )
 
     this.parseResSub = parseNewIcomingObservable.subscribe(parseResults => {
+      onPoolDataParsed(parseResults.parsed, parseResults.startTime, parseResults.isEnabled)
       if (parseResults.startTime) {
         this.postponedPoolsSubject.next({ kind: 'Postponed', parsed: parseResults.parsed, startTime: parseResults.startTime })
       } else if (parseResults.isEnabled) {
@@ -162,8 +154,8 @@ export class TradingBot {
       )
       .subscribe({
         next: safetyCheckResults => {
-          switch (
-          safetyCheckResults.kind) {
+          onPoolValidationChanged(safetyCheckResults)
+          switch (safetyCheckResults.kind) {
             case 'CreatorIsScammer': {
               const msg = `Pool ${safetyCheckResults.pool.poolKeys.id} Skipped because creator ${safetyCheckResults.pool.creator.toString()} is in blacklist.`
               this.skippedPoolsSubject.next({ data: safetyCheckResults.pool, reason: msg })
@@ -202,35 +194,40 @@ export class TradingBot {
       concatWith(waitLPBurnedObservable),
       map(x => evaluateSafetyState(x.data, x.isliquidityLocked)),
       switchMap(data => {
+        onPoolValidationEvaluated(data)
         if (data.status === 'RED') {
           return EMPTY
         } else {
+          onStartGettingTrades(data)
           return from(checkLatestTrades(this.connection, data.data.pool))
             .pipe(
               map(x => { return { data: data.data, status: data.status, statusReason: data.reason, tradingInfo: x } })
             )
         }
       })
-    )
-      .subscribe({
-        next: data => {
-          this.checkTokenStatusAndTradingTrend({ pool: data.data, safetyStatus: data.status, statusReason: data.statusReason, tradingInfo: data.tradingInfo })
-        },
-        error: e => {
-          console.error(`${e}`)
-        }
-      })
+    ).subscribe({
+      next: data => {
+        this.checkTokenStatusAndTradingTrend({ pool: data.data, safetyStatus: data.status, statusReason: data.statusReason, tradingInfo: data.tradingInfo })
+      },
+      error: e => {
+        console.error(`${e}`)
+      }
+    })
 
 
     this.tradingSub = this.readyToTradeSubject
       .pipe(
-        mergeMap(x =>
-          from(tryPerformTrading(this.connection, x.data.pool, x.status))
+        mergeMap(x => {
+          onStartTrading(x.data)
+          return from(tryPerformTrading(this.connection, x.data.pool, x.status))
             .pipe(map(tr => { return { poolData: x.data, results: tr } }))
-        )
+        })
       )
       .subscribe({
-        next: x => this.onTradingResults(x.poolData.pool.id.toString(), x.results),
+        next: x => {
+          onFinishTrading(x.poolData, x.results)
+          this.onTradingResults(x.poolData.pool.id.toString(), x.results)
+        },
         error: e => {
           console.error(`${e}`)
         }
@@ -248,17 +245,20 @@ export class TradingBot {
 
     if (data.tradingInfo.dump) {
       const log = `Already dumped. TX1: https://solscan.io/tx/${data.tradingInfo.dump[0].signature} TX2:TX1: https://solscan.io/tx/${data.tradingInfo.dump[1].signature}`
+      onTradesEvaluated(data.pool, log)
       this.skippedPoolsSubject.next({ data: data.pool, reason: log })
       return
     }
 
     const tradingAnalisis = data.tradingInfo.analysis
     if (!tradingAnalisis) {
+      onTradesEvaluated(data.pool, `Couldn't fetch trades`)
       this.skippedPoolsSubject.next({ data: data.pool, reason: `Couldn't fetch trades` })
       return
     }
 
     if (data.safetyStatus === 'GREEN') {
+      onTradesEvaluated(data.pool, `${data.safetyStatus}`)
       if (tradingAnalisis.type === 'PUMPING' || tradingAnalisis.type === 'EQUILIBRIUM') {
         this.readyToTradeSubject.next({ status: data.safetyStatus, data: data.pool })
       } else {
@@ -269,22 +269,26 @@ export class TradingBot {
     }
 
     if (tradingAnalisis.type !== 'PUMPING') {
+      onTradesEvaluated(data.pool, `${data.safetyStatus}`)
       this.skippedPoolsSubject.next({ data: data.pool, reason: `Trend is DUMPING` })
       return
     }
 
     if (tradingAnalisis.volatility > config.safePriceValotilityRate) {
       const msg = `Not GREEN token and Price volatility is to high ${tradingAnalisis.volatility}`
+      onTradesEvaluated(data.pool, msg)
       this.skippedPoolsSubject.next({ data: data.pool, reason: msg })
       return
     }
 
     if (tradingAnalisis.buysCount < config.safeBuysCountInFirstMinute) {
       const msg = `Not GREEN token and Very little BUY txs ${tradingAnalisis.buysCount}`
+      onTradesEvaluated(data.pool, msg)
       this.skippedPoolsSubject.next({ data: data.pool, reason: msg })
       return
     }
 
+    onTradesEvaluated(data.pool, `${data.safetyStatus}`)
     this.readyToTradeSubject.next({ status: data.safetyStatus, data: data.pool })
   }
 
@@ -315,41 +319,11 @@ export class TradingBot {
     }
   }
 
-  getSkippedPools() {
-    return this.skippedPools
-  }
-
-  getTradingResults() {
-    return this.completedTrades
-  }
-
-  getWalletTradingInfo() {
-    return this.tradingWallet
-  }
-
-  getRunningValidationInfo() {
-    return this.runningValidations
-  }
-
-  getCompletedValidations() {
-    return this.allValidatedPools
-  }
-
-  getValidationErrors() {
-    return this.validationErrors
-  }
-
   private onError(error: Error) {
     console.error(error)
   }
 
   private onTradingResults(poolId: string, tradeResults: SellResults) {
-    this.completedTrades.push(`Pool: ${poolId}, Trading resulst: ${JSON.stringify(tradeResults)}`)
-    if (this.onLogsSubscriptionId === null) { return }
-    this.runningTradesCount--
-    console.log(`Running Traders - current: ${this.runningTradesCount}, max: ${this.maxCountOfSimulteniousTradings} `)
-    console.log(`Pool ${poolId}, trading results: ${JSON.stringify(tradeResults)} `)
-
     this.updateWSOLBalance(tradeResults)
     console.log(chalk.yellow('Got trading results'))
   }

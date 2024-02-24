@@ -8,6 +8,7 @@ import { buyToken } from './BuyToken'
 import { getAssociatedTokenAddressSync, TOKEN_PROGRAM_ID } from '@solana/spl-token'
 import { SellResults, sellToken } from './SellToken'
 import { Connection } from '@solana/web3.js'
+import { onBuyResults } from '../StateAggregator/ConsoleOutput'
 
 export type TraderResults = {
   boughtAmountInSOL: number | null,
@@ -34,10 +35,8 @@ export async function tryPerformTrading(connection: Connection, pool: LiquidityP
   const tokenBToken = new Token(TOKEN_PROGRAM_ID, tokenBMint, tokenBDecimals)
   const tokenBAccountAddress = getAssociatedTokenAddressSync(tokenBMint, OWNER_ADDRESS, false);
 
-  console.log(`Verify tokens A - ${tokenAMint.toString()}   B - ${tokenBMint.toString()}`);
 
   if (pool.quoteMint.toString() !== WSOL.mint && pool.baseMint.toString() !== WSOL.mint) {
-    console.log(`No SOL in pair. Skip swapping.`);
     return { kind: 'FAILED', reason: 'No SOL in pair', txId: null, boughtForSol: null, buyTime: null }
   }
 
@@ -45,6 +44,7 @@ export async function tryPerformTrading(connection: Connection, pool: LiquidityP
   const exitStrategy = getExitStrategy(safetyStatus)!
 
   const buyResult = await buyToken(connection, PAYER, buyAmount, tokenBToken, tokenBAccountAddress, pool, SOL_SPL_TOKEN_ADDRESS)
+  onBuyResults(pool.id.toString(), buyResult)
   const buyDate = new Date()
 
   if (buyResult.kind !== 'SUCCESS') {

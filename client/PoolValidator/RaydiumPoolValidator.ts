@@ -54,9 +54,7 @@ export type TradingInfo = {
 
 export async function parsePoolCreationTx(connection: Connection, mintTxId: string)
   : Promise<ParsedPoolCreationTx> {
-  console.log(`Start validationg. TxId: ${mintTxId}.`)
-  const { poolKeys, mintTransaction } = await fetchPoolKeysForLPInitTransactionHash(connection, mintTxId) // With poolKeys you can do a swap
-  console.log(`Received pool info ${poolKeys.id} For mint TxId: ${mintTxId}.`)
+  const { poolKeys, mintTransaction } = await fetchPoolKeysForLPInitTransactionHash(connection, mintTxId) // With poolKeys you can do a swap  
   const binaryPoolKeys = convertStringKeysToDataKeys(poolKeys)
   const info = await tryParseLiquidityPoolInfo(connection, binaryPoolKeys)
   if (info === null) {
@@ -64,9 +62,6 @@ export async function parsePoolCreationTx(connection: Connection, mintTxId: stri
   }
 
   if (!mintTransaction.meta || !mintTransaction.meta.innerInstructions || !mintTransaction.meta.preTokenBalances || !mintTransaction.meta.postTokenBalances) {
-    console.log(`meta is null ${mintTransaction.meta === null}`)
-    console.log(`innerInstructions is null ${mintTransaction.meta?.innerInstructions === null || mintTransaction.meta?.innerInstructions === undefined}`)
-    console.log(`post balances is null ${mintTransaction.meta?.postTokenBalances === null || mintTransaction.meta?.postTokenBalances === undefined}`)
     throw Error(`Couldn't get creator address from initial pool tx ${mintTxId}`)
   }
 

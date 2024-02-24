@@ -6,6 +6,7 @@ import {
 import { Wallet } from '@project-serum/anchor'
 import chalk from "chalk";
 import { delay, lamportsToSOLNumber, timeout } from "./Utils";
+import { onTradingPNLChanged } from "./StateAggregator/ConsoleOutput";
 
 export async function swapTokens(
   connection: Connection,
@@ -153,21 +154,21 @@ export async function calcProfit(
       priceImpact,
       fee,
     } = await calculateAmountOut(connection, amountIn, tokenOut, poolKeys)
-    console.log(chalk.yellow('Calculated sell prices'));
-    console.log(`${chalk.bold('current price: ')}: ${currentPrice.toFixed()}`);
-    if (executionPrice !== null) {
-      console.log(`${chalk.bold('execution price: ')}: ${executionPrice.toFixed()}`);
-    }
-    console.log(`${chalk.bold('price impact: ')}: ${priceImpact.toFixed()}`);
-    console.log(`${chalk.bold('amount out: ')}: ${amountOut.toFixed()}`);
-    console.log(`${chalk.bold('min amount out: ')}: ${minAmountOut.toFixed()}`);
+    // console.log(chalk.yellow('Calculated sell prices'));
+    // console.log(`${chalk.bold('current price: ')}: ${currentPrice.toFixed()}`);
+    // if (executionPrice !== null) {
+    //   console.log(`${chalk.bold('execution price: ')}: ${executionPrice.toFixed()}`);
+    // }
+    // console.log(`${chalk.bold('price impact: ')}: ${priceImpact.toFixed()}`);
+    // console.log(`${chalk.bold('amount out: ')}: ${amountOut.toFixed()}`);
+    // console.log(`${chalk.bold('min amount out: ')}: ${minAmountOut.toFixed()}`);
 
     const amountOutInSOL = lamportsToSOLNumber(amountOut.raw) ?? 0
     const potentialProfit = (amountOutInSOL - spent) / spent;
 
     return { currentAmountOut: amountOutInSOL, profit: potentialProfit };
   } catch (e) {
-    console.log(chalk.yellow('Faiiled to calculate amountOut and profit.'));
+    console.error('Faiiled to calculate amountOut and profit.');
     return null;
   }
 }
@@ -197,26 +198,24 @@ async function loopAndWaitForProfit(
       const calculationResult = await calcProfit(spentAmount, connection, amountIn, tokenOut, poolKeys);
       if (calculationResult !== null) {
         const { currentAmountOut, profit } = calculationResult;
+        const profitChanges = Math.abs(profit - profitToTakeOrLose)
+        if (profitChanges >= 0.01) {
+          onTradingPNLChanged(poolKeys.id.toString(), profit - profitToTakeOrLose)
+        }
         profitToTakeOrLose = profit;
         profitObject.profit = profit
         profitObject.amountOut = currentAmountOut
 
-        console.log(chalk.bgCyan(`Profit is less target: ${profitToTakeOrLose < targetProfitPercentage}`));
-
         if (currentAmountOut < prevAmountOut) {
-          console.log(chalk.bgRed(`Price is DOWN`));
           priceDownCounter -= 1;
         } else {
-          console.log(chalk.bgGreen(`Price is UP`));
           if (priceDownCounter < 5) { priceDownCounter += 1; }
         }
 
         prevAmountOut = currentAmountOut;
       }
-      console.log(chalk.bold(`Profit to take: ${profitToTakeOrLose}. PriceDownCounter: ${priceDownCounter}`));
       await delay(amountOutCalculationDelayMs);
     } catch (e) {
-      console.log(`${chalk.red(`Failed to profit with error: ${e}`)}`);
       await delay(amountOutCalculationDelayMs);
     }
   }
@@ -242,9 +241,8 @@ export async function waitForProfitOrTimeout(
       timeout(timeutInMillis, cancellationToken)
     ])
   } catch (e) {
-    console.log(`Timeout happened ${chalk.bold('Profit to take: ')} ${profitObject.profit < 0 ? chalk.red(profitObject.profit) : chalk.green(profitObject.profit)}`);
+    console.error(`Timeout happened ${chalk.bold('Profit to take: ')} ${profitObject.profit < 0 ? chalk.red(profitObject.profit) : chalk.green(profitObject.profit)}`);
   }
-  console.log(`Fixing profit ${chalk.bold('Profit to take: ')} ${profitObject.profit < 0 ? chalk.red(profitObject.profit) : chalk.green(profitObject.profit)}`);
   return { amountOut: profitObject.amountOut, profit: profitObject.profit }
 }
 
@@ -261,7 +259,7 @@ export async function validateTradingTrendOrTimeout(
       timeout(30 * 1000, cancellationToken) // 30 seconds
     ]);
   } catch (e) {
-    console.log(chalk.red(`Timeout happend. Can't identify trend.`));
+    console.error(chalk.red(`Timeout happend. Can't identify trend.`));
     return null;
   }
   return trendingCondition;
@@ -304,7 +302,7 @@ async function loopAndCheckPriceTrend(
   }
 
   if (failedAttempts > 2) {
-    console.log(chalk.red(`Too many fails. Can't see the trend`));
+    console.error(chalk.red(`Too many fails. Can't see the trend`));
     return null;
   }
 
@@ -343,7 +341,7 @@ async function checkPriceTrend(
     const trend = firstAttempt.amountOut.gt(secodAttempt.amountOut) ? 'DOWN' : 'UP';
     return { amountOut: secodAttempt.amountOut, trend };
   } catch (e) {
-    console.log(chalk.yellow('Failed to get amountOut and identify price trend.'));
+    console.error(chalk.yellow('Failed to get amountOut and identify price trend.'));
     return null;
   }
 }

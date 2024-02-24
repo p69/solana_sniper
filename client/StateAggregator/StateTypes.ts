@@ -19,36 +19,34 @@ export type SellTxInfo = {
   error: string | null
 }
 
+//'Status', 'ID', 'Safety', 'Start Time', 'Token', 'Buy', 'Sell', 'Profit'
+
 export type StateRecord = {
-  firstMintTx: string,
-  status: PoolStatus,
+  poolId: string,
+  status: string,
   startTime: string | null,
   tokenId: string | null,
-  poolId: string | null,
-  liquidity: string | null,
-  lockedLiquidity: string | null,
-  percentInPool: string | null,
-  isMintable: boolean | null,
-  buyTx: BuyTxInfo | null,
-  sellTx: SellTxInfo | null,
-  profit: string | null
+  safetyInfo: string | null,
+  buyInfo: string | null,
+  sellInfo: string | null,
+  profit: string | null,
+  maxProfit: number | null,
 }
 
+
+
 export function createStateRecord(
-  requiredFields: Pick<StateRecord, 'firstMintTx' | 'status'>,
-  optionalFields?: Partial<Omit<StateRecord, 'firstMintTx' | 'status'>>
+  requiredFields: Pick<StateRecord, 'poolId' | 'status'>,
+  optionalFields?: Partial<Omit<StateRecord, 'poolId' | 'status'>>
 ): StateRecord {
-  const defaultStateRecord: Omit<StateRecord, 'firstMintTx' | 'status'> = {
+  const defaultStateRecord: Omit<StateRecord, 'poolId' | 'status'> = {
     startTime: null,
     tokenId: null,
-    poolId: null,
-    liquidity: null,
-    lockedLiquidity: null,
-    percentInPool: null,
-    isMintable: null,
-    buyTx: null,
-    sellTx: null,
+    safetyInfo: null,
+    buyInfo: null,
+    sellInfo: null,
     profit: null,
+    maxProfit: null
   };
 
   return { ...defaultStateRecord, ...requiredFields, ...optionalFields };

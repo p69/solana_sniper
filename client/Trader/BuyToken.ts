@@ -43,12 +43,6 @@ export async function buyToken(
   mainTokenAccountAddress: PublicKey): Promise<BuyResult> {
   const buyAmount = new TokenAmount(WSOL_TOKEN, amountToBuy, false)
 
-  console.log(chalk.yellow(`Getting trend before buying a token`));
-
-
-  console.log(`Buying ${tokenToBuy.mint} for ${amountToBuy} SOL`);
-
-
   let buyError = ''
   let txid = ''
   let newTokenAmount: number | null = null
@@ -56,7 +50,7 @@ export async function buyToken(
     try {
       newTokenAmount = await retryAsyncFunction(calcTokemAmountOut, [connection, buyAmount, tokenToBuy, poolInfo])
     } catch (e) {
-      console.log(chalk.red(`Failed to simulate buying shitcoin with error ${e}. Retrying.`));
+      console.error(`Failed to simulate buying shitcoin with error ${e}. Retrying.`);
       buyError = `${e}`
     }
   } else {
@@ -69,15 +63,13 @@ export async function buyToken(
           payer,
           buyAmount])
     } catch (e) {
-      console.log(chalk.red(`Failed to buy shitcoin with error ${e}. Retrying.`));
+      console.error(`Failed to buy shitcoin with error ${e}. Retrying.`)
       buyError = `${e}`
     }
 
     if (txid === '') {
       return { kind: 'NO_BUY', reason: buyError }
     }
-
-    console.log(`${chalk.yellow(`Confirming buying transaction. https://solscan.io/tx/${txid}`)}`);
   }
 
 
@@ -96,22 +88,18 @@ export async function buyToken(
     }
 
     if (!transactionConfirmed) {
-      console.log(chalk.red(`Couldn't confirm transaction https://solscan.io/tx/${txid}`))
       return { kind: 'NO_CONFIRMATION', reason: confirmationError, txId: txid }
     }
   }
 
   let snipedAmount: number | null
   if (!config.simulateOnly) {
-    console.log(`Buying transaction ${chalk.green('CONFIRMED')}. https://solscan.io/tx/${txid}`);
-    console.log(`Getting bought tokens amount`);
     const shitTokenBalance = await retryAsyncFunction(getNewTokenBalance,
       [connection, txid, tokenToBuy.mint.toString(), payer.publicKey.toString()], 10, 1000);
 
     if (shitTokenBalance !== undefined) {
       snipedAmount = shitTokenBalance.uiTokenAmount.uiAmount;
     } else {
-      console.log(`${chalk.red("Couldn't fetch new balance. Trying to fetch account with balance")}`)
       const balance = await retryAsyncFunction(getTokenAccountBalance, [connection, tokenToBuyAccountAddress])
       snipedAmount = balance.uiAmount
     }
@@ -141,20 +129,21 @@ async function calcTokemAmountOut(
       priceImpact,
       fee,
     } = await calculateAmountOut(connection, amountIn, tokenOut, poolKeys)
-    console.log(chalk.yellow('Calculated buy prices'));
-    console.log(`${chalk.bold('current price: ')}: ${currentPrice.toFixed()}`);
-    if (executionPrice !== null) {
-      console.log(`${chalk.bold('execution price: ')}: ${executionPrice.toFixed()}`);
-    }
-    console.log(`${chalk.bold('price impact: ')}: ${priceImpact.toFixed()}`);
-    console.log(`${chalk.bold('amount out: ')}: ${amountOut.toFixed()}`);
-    console.log(`${chalk.bold('min amount out: ')}: ${minAmountOut.toFixed()}`);
+
+    // console.log(chalk.yellow('Calculated buy prices'));
+    // console.log(`${chalk.bold('current price: ')}: ${currentPrice.toFixed()}`);
+    // if (executionPrice !== null) {
+    //   console.log(`${chalk.bold('execution price: ')}: ${executionPrice.toFixed()}`);
+    // }
+    // console.log(`${chalk.bold('price impact: ')}: ${priceImpact.toFixed()}`);
+    // console.log(`${chalk.bold('amount out: ')}: ${amountOut.toFixed()}`);
+    // console.log(`${chalk.bold('min amount out: ')}: ${minAmountOut.toFixed()}`);
 
     const amountOutNumber = lamportsToSOLNumber(amountOut.raw, tokenOut.decimals) ?? 0
 
     return amountOutNumber
   } catch (e) {
-    console.log(chalk.yellow('Faiiled to calculate amountOut'));
+    //console.log(chalk.yellow('Faiiled to calculate amountOut'));
     return null;
   }
 }
