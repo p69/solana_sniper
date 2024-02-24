@@ -47,6 +47,22 @@
         "${workspaceFolder}/client/dist/**/*.js"
       ],
       "sourceMaps": true
+    },
+    {
+      "type": "node",
+      "request": "launch",
+      "name": "Manual trades",
+      "args": [
+        "--operation=buy",
+        "--mint=CgzdCjj5YNH51uFfQftFbuJKMrwgdWheVjwqjU84MV8y",
+        "--pair=DG9PgGwpA2RjvNrWbWrhPWR8bZLig5nDSWTz14uSHyRQ"
+      ],
+      "preLaunchTask": "tsc: build - tsconfig.json",
+      "program": "${workspaceFolder}/client/ManualTrader.ts",
+      "outFiles": [
+        "${workspaceFolder}/client/dist/**/*.js"
+      ],
+      "sourceMaps": true
     }
   ]
 }

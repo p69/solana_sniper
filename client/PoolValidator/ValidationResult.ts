@@ -8,15 +8,15 @@ export type PoolFeatures = {
   removeLiquidity: boolean,
 }
 
-export type PoolValidationResults = {
-  pool: PoolKeys,
-  poolInfo: LiquidityPoolInfo,
-  poolFeatures: PoolFeatures,
-  safetyStatus: TokenSafetyStatus,
-  startTimeInEpoch: number | null,
-  trend: TrendAnalisis | null,
-  reason: string
-}
+// export type PoolValidationResults = {
+//   pool: PoolKeys,
+//   poolInfo: LiquidityPoolInfo,
+//   poolFeatures: PoolFeatures,
+//   safetyStatus: TokenSafetyStatus,
+//   startTimeInEpoch: number | null,
+//   trend: TrendAnalisis | null,
+//   reason: string
+// }
 
 export type TokenSafetyStatus =
   'RED' // 100% scam will be rugged very fast

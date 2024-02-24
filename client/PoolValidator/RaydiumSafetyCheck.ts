@@ -1,12 +1,13 @@
-import { ParsedTransactionWithMeta, PublicKey, Connection, TokenBalance } from '@solana/web3.js'
+import { PublicKey, Connection, TokenBalance } from '@solana/web3.js'
 import { LiquidityPoolKeysV4, WSOL } from '@raydium-io/raydium-sdk'
-import { getAssociatedTokenAddressSync, MINT_SIZE, MintLayout } from '@solana/spl-token'
+import { MINT_SIZE, MintLayout } from '@solana/spl-token'
 import { BURN_ACC_ADDRESS } from './Addresses'
 import { KNOWN_SCAM_ACCOUNTS } from './BlackLists'
 import { BN } from "@project-serum/anchor";
 import chalk from 'chalk'
 import { delay, timeout } from '../Utils'
 import { error } from 'console'
+import { ParsedPoolCreationTx } from './RaydiumPoolValidator'
 
 const RAYDIUM_OWNER_AUTHORITY = '5Q544fKrFoe6tsEbD7S8EmxGTJYAKtTVhAW5Q5pge4j1';
 
@@ -14,7 +15,7 @@ type OwnershipInfo = {
   mintAuthority: string | null,
   freezeAuthority: string | null,
   isMintable: boolean,
-  authorityBalancePercent: number
+  totalSupply: number
 }
 
 type LiquidityValue = {
@@ -23,60 +24,76 @@ type LiquidityValue = {
   symbol: string
 }
 
-export type SafetyCheckResult = {
+export type PoolSafetyData = {
   creator: PublicKey,
-  newTokensWereMintedDuringValidation: boolean,
   totalLiquidity: LiquidityValue,
-  isliquidityLocked: boolean,
   newTokenPoolBalancePercent: number,
   ownershipInfo: OwnershipInfo,
+  pool: LiquidityPoolKeysV4,
+  tokenMint: PublicKey
 }
 
-export async function checkToken(connection: Connection, tx: ParsedTransactionWithMeta, pool: LiquidityPoolKeysV4): Promise<SafetyCheckResult | null> {
-  if (!tx.meta || !tx.meta.innerInstructions || !tx.meta.preTokenBalances || !tx.meta.postTokenBalances) {
-    console.log(`meta is null ${tx.meta === null}`)
-    console.log(`innerInstructions is null ${tx.meta?.innerInstructions === null || tx.meta?.innerInstructions === undefined}`)
-    console.log(`post balances is null ${tx.meta?.postTokenBalances === null || tx.meta?.postTokenBalances === undefined}`)
-    return null
-  }
+export type WaitLPBurning = {
+  kind: 'WaitLPBurning',
+  data: PoolSafetyData,
+  lpTokenMint: PublicKey
+}
 
-  const firstInnerInstructionsSet = tx.meta.innerInstructions[0].instructions as any[]
-  const creatorAddress = new PublicKey(firstInnerInstructionsSet[0].parsed.info.source)
+export type WaitLPBurningComplete = {
+  kind: 'WaitLPBurningComplete',
+  data: PoolSafetyData,
+  isliquidityLocked: boolean,
+}
 
+export type WaitLPBurningTooLong = {
+  kind: 'WaitLPBurningTooLong',
+  data: ParsedPoolCreationTx,
+}
+
+type CreatorIsInBlackList = {
+  kind: 'CreatorIsScammer',
+  pool: ParsedPoolCreationTx,
+}
+
+export type SafetyCheckComplete = {
+  kind: 'Complete',
+  isliquidityLocked: boolean,
+  data: PoolSafetyData
+}
+
+export type SafetyCheckResult = WaitLPBurning | WaitLPBurningTooLong | WaitLPBurningComplete | CreatorIsInBlackList | SafetyCheckComplete
+
+export async function checkToken(connection: Connection, data: ParsedPoolCreationTx): Promise<SafetyCheckResult> {
   /// Check blacklist first
-  if (KNOWN_SCAM_ACCOUNTS.has(creatorAddress.toString())) {
-    console.log(`Creater blacklisted ${creatorAddress.toString()}`)
-    return null
+  if (KNOWN_SCAM_ACCOUNTS.has(data.creator.toString())) {
+    return { kind: 'CreatorIsScammer', pool: data }
   }
+
+  const pool = data.poolKeys
 
   const baseIsWSOL = pool.baseMint.toString() === WSOL.mint
-  const otherTokenMint = baseIsWSOL ? pool.quoteMint : pool.baseMint
+  const otherTokenMint = new PublicKey(baseIsWSOL ? pool.quoteMint : pool.baseMint)
 
   /// Check mint and freeze authorities
   /// Ideally `not set`
   /// Not to bad if address is not cretor's
   /// Red-flag if addresses is the same as creator's
-  const otherTokenInfo = await connection.getAccountInfo(otherTokenMint)
-  const mintInfo = MintLayout.decode(otherTokenInfo!.data!.subarray(0, MINT_SIZE))
-  const totalSupply = Number(mintInfo.supply) / (10 ** mintInfo.decimals)
-  let mintAuthority = mintInfo.mintAuthorityOption > 0 ? mintInfo.mintAuthority : null
-  const freezeAuthority = mintInfo.freezeAuthorityOption > 0 ? mintInfo.freezeAuthority : null
-  let tokenSupplyIsNotChanged = true
+  const ownershipInfo = await getTokenOwnershipInfo(connection, otherTokenMint)
 
-  /// Check creators and authorities balances
-  const calcOwnershipPercent = async (address: PublicKey) => {
-    const tokenAcc = getAssociatedTokenAddressSync(otherTokenMint, address)
-    const value = (await connection.getTokenAccountBalance(tokenAcc)).value.uiAmount ?? 0
-    return value / totalSupply
-  }
+  // /// Check creators and authorities balances
+  // const calcOwnershipPercent = async (address: PublicKey) => {
+  //   const tokenAcc = getAssociatedTokenAddressSync(otherTokenMint, address)
+  //   const value = (await connection.getTokenAccountBalance(tokenAcc)).value.uiAmount ?? 0
+  //   return value / totalSupply
+  // }
 
-  const creatorsPercentage = await calcOwnershipPercent(creatorAddress)
-  let authorityPercentage: number = 0
-  if (mintAuthority) {
-    authorityPercentage = await calcOwnershipPercent(mintAuthority)
-  } else if (freezeAuthority) {
-    authorityPercentage = await calcOwnershipPercent(freezeAuthority)
-  }
+  // const creatorsPercentage = await calcOwnershipPercent(creatorAddress)
+  // let authorityPercentage: number = 0
+  // if (mintAuthority) {
+  //   authorityPercentage = await calcOwnershipPercent(mintAuthority)
+  // } else if (freezeAuthority) {
+  //   authorityPercentage = await calcOwnershipPercent(freezeAuthority)
+  // }
 
   ///Check largest holders
   /// Should Raydiium LP
@@ -88,61 +105,12 @@ export async function checkToken(connection: Connection, tx: ParsedTransactionWi
     const poolAcc = raydiumTokenAccount.value[0].pubkey.toString()
     const poolBalance = largestAccounts.value.find(x => x.address.toString() === poolAcc)
     if (poolBalance) {
-      newTokenPoolBalancePercent = (poolBalance.uiAmount ?? 0) / totalSupply
+      newTokenPoolBalancePercent = (poolBalance.uiAmount ?? 0) / ownershipInfo.totalSupply
     }
-  }
-
-  /// Find LP-token minted by providing liquidity to the pool
-  /// Serves as a permission to remove liquidity
-  const preBalanceTokens = reduceBalancesToTokensSet(tx.meta.preTokenBalances)
-  const postBalanceTokens = reduceBalancesToTokensSet(tx.meta.postTokenBalances)
-  let lpTokenMint: string | null = null
-  for (let x of postBalanceTokens) {
-    if (!preBalanceTokens.has(x)) {
-      lpTokenMint = x
-      break
-    }
-  }
-
-  if (lpTokenMint === null) {
-    /// NO LP tokens
-    console.log(`No LP tokens`)
-    return null
-  }
-
-
-  let isLiquidityLocked = await checkIfLPTokenBurnedWithRetry(connection, 3, 500, new PublicKey(lpTokenMint))
-
-  // Liqidity is not locked, but more than half of supply is in pool
-  // Possible that LP token wiill be burned later. Wait for a few hours
-  if (!isLiquidityLocked && newTokenPoolBalancePercent >= 0.5) {
-    console.log(chalk.cyan(`Pools ${pool.id.toString()}. All tokens are in pool, but LP tokens aren't burned yet. Start verifying it`))
-    isLiquidityLocked = await checkLPTokenBurnedOrTimeout(
-      connection,
-      new PublicKey(lpTokenMint),
-      2 * 60 * 60 * 1000
-    )
-    console.log(chalk.cyan(`Pools ${pool.id.toString()}. LP tokens verifyed: ${isLiquidityLocked ? 'Locked' : 'Unlocked'}`))
-
-    const lastOtherTokenInfo = await connection.getAccountInfo(otherTokenMint)
-    const updatedMintInfo = MintLayout.decode(lastOtherTokenInfo!.data!.subarray(0, MINT_SIZE))
-    const lastTotalSupply = Number(updatedMintInfo.supply) / (10 ** updatedMintInfo.decimals)
-    const updatedMintAuthority = updatedMintInfo.mintAuthorityOption > 0 ? updatedMintInfo.mintAuthority : null
-
-    tokenSupplyIsNotChanged = lastTotalSupply === totalSupply
-    mintAuthority = updatedMintAuthority
-  }
-
-  /// Check if supply was changed during LP tokens validation
-  if (tokenSupplyIsNotChanged) {
-    const lastOtherTokenInfo = await connection.getAccountInfo(otherTokenMint)
-    const lastMintInfo = MintLayout.decode(lastOtherTokenInfo!.data!.subarray(0, MINT_SIZE))
-    const lastSupply = Number(lastMintInfo.supply) / (10 ** lastMintInfo.decimals)
-    tokenSupplyIsNotChanged = totalSupply === lastSupply
   }
 
   /// Get real liquiidity value
-  const realCurrencyLPBalance = await connection.getTokenAccountBalance(baseIsWSOL ? pool.baseVault : pool.quoteVault);
+  const realCurrencyLPBalance = await connection.getTokenAccountBalance(new PublicKey(baseIsWSOL ? pool.baseVault : pool.quoteVault));
   //const lpVaultBalance = await connection.getTokenAccountBalance(poolKeys.lpVault);
   const SOL_EXCHANGE_RATE = 110 /// With EXTRA as of 08.02.2024
   const liquitity = realCurrencyLPBalance.value.uiAmount ?? 0;
@@ -150,37 +118,46 @@ export async function checkToken(connection: Connection, tx: ParsedTransactionWi
   const symbol = isSOL ? 'SOL' : 'USD';
   const amountInUSD = isSOL ? liquitity * SOL_EXCHANGE_RATE : liquitity
 
-  console.log(chalk.bgBlue(`Pool ${pool.id.toString()} Real Liquidity ${liquitity} ${symbol}`))
-  console.log(chalk.cyan(`Pools ${pool.id.toString()}. Safety check completed`))
-
-  return {
-    creator: creatorAddress,
-    isliquidityLocked: isLiquidityLocked,
-    newTokensWereMintedDuringValidation: false,
+  const resultData: PoolSafetyData = {
+    creator: data.creator,
     totalLiquidity: {
       amount: liquitity,
       amountInUSD,
       symbol
     },
     newTokenPoolBalancePercent,
-    ownershipInfo: {
-      mintAuthority: mintAuthority?.toString() ?? null,
-      freezeAuthority: freezeAuthority?.toString() ?? null,
-      isMintable: mintAuthority !== null,
-      authorityBalancePercent: authorityPercentage
-    }
+    ownershipInfo,
+    pool: data.binaryKeys,
+    tokenMint: otherTokenMint
+  }
+
+  let isLiquidityLocked = await checkIfLPTokenBurnedWithRetry(connection, 3, 200, data.lpTokenMint)
+
+  // Liqidity is not locked, but more than half of supply is in pool
+  // Possible that LP token wiill be burned later. Wait for a few hours
+  if (!isLiquidityLocked && newTokenPoolBalancePercent >= 0.5) {
+    console.log(chalk.cyan(`Pools ${pool.id.toString()}. All tokens are in pool, but LP tokens aren't burned yet. Start verifying it`))
+    return { kind: 'WaitLPBurning', data: resultData, lpTokenMint: data.lpTokenMint }
+  }
+
+  return { kind: 'Complete', data: resultData, isliquidityLocked: isLiquidityLocked }
+}
+
+export async function getTokenOwnershipInfo(connection: Connection, tokenMint: PublicKey): Promise<OwnershipInfo> {
+  const otherTokenInfo = await connection.getAccountInfo(tokenMint)
+  const mintInfo = MintLayout.decode(otherTokenInfo!.data!.subarray(0, MINT_SIZE))
+  const totalSupply = Number(mintInfo.supply) / (10 ** mintInfo.decimals)
+  let mintAuthority = mintInfo.mintAuthorityOption > 0 ? mintInfo.mintAuthority : null
+  const freezeAuthority = mintInfo.freezeAuthorityOption > 0 ? mintInfo.freezeAuthority : null
+  return {
+    mintAuthority: mintAuthority?.toString() ?? null,
+    freezeAuthority: freezeAuthority?.toString() ?? null,
+    isMintable: mintAuthority !== null,
+    totalSupply
   }
 }
 
-function reduceBalancesToTokensSet(balances: TokenBalance[]): Set<string> {
-  const result = new Set<string>()
-  return balances.reduce((set, b) => {
-    set.add(b.mint)
-    return set
-  }, result)
-}
-
-async function checkLPTokenBurnedOrTimeout(
+export async function checkLPTokenBurnedOrTimeout(
   connection: Connection,
   lpTokenMint: PublicKey,
   timeoutInMillis: number,

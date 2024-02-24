@@ -2,7 +2,6 @@ import Table from 'cli-table'
 import { StateRecord, createStateRecord } from './StateTypes'
 import { PoolKeys } from '../PoolValidator/RaydiumPoolParser'
 import { WSOL } from '@raydium-io/raydium-sdk'
-import { PoolValidationResults } from '../PoolValidator/ValidationResult'
 
 ///Color(+Reason)	First mint TX   StartTime		TokenId		PoolId		Liquidity		Locked Liquidity 		Percent in Pool		Is Mintable	 Buy		Sell 		Profit
 
@@ -40,14 +39,14 @@ export function onPoolIsDisabledOrDelayed(firstMintTx: string, startTimeEpoch: n
   allRecordsByFirstMintTx.set(firstMintTx, updated)
 }
 
-export function onPoolValidationCompleted(firstMintTx: string, results: PoolValidationResults) {
-  const record = getOrMakeRecordByTxId(firstMintTx)
-  const updated = {
-    ...record,
-    status: { ...record.status, safety: results.safetyStatus, reason: results.reason, isEnabled: results.poolFeatures.swap },
-  }
-  allRecordsByFirstMintTx.set(firstMintTx, updated)
-}
+// export function onPoolValidationCompleted(firstMintTx: string, results: PoolValidationResults) {
+//   const record = getOrMakeRecordByTxId(firstMintTx)
+//   const updated = {
+//     ...record,
+//     status: { ...record.status, safety: results.safetyStatus, reason: results.reason, isEnabled: results.poolFeatures.swap },
+//   }
+//   allRecordsByFirstMintTx.set(firstMintTx, updated)
+// }
 
 export function onPoolValidationFailed(firstMintTx: string, error: string) {
   const record = getOrMakeRecordByTxId(firstMintTx)

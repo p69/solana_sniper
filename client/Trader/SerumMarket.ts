@@ -9,6 +9,7 @@ import { PoolKeys, fetchPoolKeysForLPInitTransactionHash } from '../PoolValidato
 import { config } from '../Config'
 import { Connection, PublicKey } from '@solana/web3.js'
 import { AccountLayout } from '@solana/spl-token'
+import { convertStringKeysToDataKeys } from '../Utils'
 
 const connection = new Connection(config.rpcHttpURL, {
   wsEndpoint: config.rpcWsURL
@@ -126,7 +127,7 @@ async function parseCSV(poolId: string): Promise<TradeRecord[]> {
 }
 
 async function getTradeRecords(poolKeys: PoolKeys): Promise<{ poolId: string, trades: TradeRecord[] }> {
-  const tradeRecords = await fetchLatestTrades(connection, poolKeys)
+  const tradeRecords = await fetchLatestTrades(connection, convertStringKeysToDataKeys(poolKeys))
   return { poolId: poolKeys.id, trades: tradeRecords }
 }
 

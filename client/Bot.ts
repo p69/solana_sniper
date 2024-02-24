@@ -1,26 +1,32 @@
-import { Connection, PublicKey } from '@solana/web3.js';
-import { findLogEntry } from './PoolValidator/RaydiumPoolParser';
+import { Connection, Logs, PublicKey } from '@solana/web3.js';
+import { PoolKeys, fetchPoolKeysForLPInitTransactionHash, findLogEntry } from './PoolValidator/RaydiumPoolParser';
 import chalk from 'chalk';
-import { ValidatePoolData, validateNewPool } from './PoolValidator/RaydiumPoolValidator';
-import { PoolValidationResults } from './PoolValidator/ValidationResult';
+import { ValidatePoolData, PoolValidationResults, parsePoolCreationTx, PoolPostponed, ParsedPoolCreationTx, checkIfPoolPostponed, checkIfSwapEnabled, evaluateSafetyState, checkLatestTrades, TradingInfo } from './PoolValidator/RaydiumPoolValidator';
 import { delay, formatDate } from './Utils';
 import { config } from './Config';
 import { SellResults } from './Trader/SellToken';
 import { SOL_SPL_TOKEN_ADDRESS } from './Trader/Addresses';
 import { tryPerformTrading } from './Trader/Trader';
+import { EMPTY, Observable, Subject, buffer, bufferCount, concatWith, distinct, empty, filter, from, iif, map, mergeAll, mergeMap, onErrorResumeNextWith, single, switchMap, timeInterval, windowCount } from 'rxjs';
+import { checkLPTokenBurnedOrTimeout, checkToken, getTokenOwnershipInfo, PoolSafetyData, SafetyCheckComplete, SafetyCheckResult, WaitLPBurning, WaitLPBurningComplete, WaitLPBurningTooLong } from './PoolValidator/RaydiumSafetyCheck';
+import { LiquidityPoolKeysV4, WSOL } from '@raydium-io/raydium-sdk';
+import { MINT_SIZE, MintLayout } from '@solana/spl-token';
+import { boolean } from 'yargs';
+import { TokenSafetyStatus } from './PoolValidator/ValidationResult';
 
 const RAYDIUM_PUBLIC_KEY = '675kPX9MHTjS2zt1qfr1NYHuzeLXfQM9H24wFSUt1Mp8';
 
-interface ReadyToTrade {
-  kind: 'OK'
+type WaitingLPMintTooLong = {
+  kind: 'TO_LONG',
+  data: ParsedPoolCreationTx
 }
 
-interface NotReadyToTrade {
-  kind: 'BAD',
-  reason: string
+type WaitingLPMintOk = {
+  kind: 'OK',
+  data: ParsedPoolCreationTx
 }
 
-type TradingDecision = ReadyToTrade | NotReadyToTrade
+type WaitingLPMint = WaitingLPMintTooLong | WaitingLPMintOk
 
 export class TradingBot {
   private onLogsSubscriptionId: number | null = null
@@ -40,6 +46,10 @@ export class TradingBot {
   private completedTrades: string[] = []
   private validationErrors: string[] = []
   private runningValidations = new Map<string, string>()
+  validationSub: any;
+  parseResSub: any;
+  pushToTradingTrendSub: any;
+  tradingSub: any;
 
 
   // private validatorPool = new Piscina({
@@ -80,7 +90,16 @@ export class TradingBot {
     this.tradingWallet.startValue = balance
   }
 
+  private raydiumLogsSubject = new Subject<Logs>()
+  private postponedPoolsSubject = new Subject<PoolPostponed>()
+  private readyToSafetyCheckSubject = new Subject<ParsedPoolCreationTx>()
+  private waitingLPToBurnPoolsSubject = new Subject<WaitLPBurning>()
+  private safetyCheckCompleteSubject = new Subject<SafetyCheckComplete | WaitLPBurningComplete>()
+  private readyToTradeSubject = new Subject<{ status: TokenSafetyStatus, data: PoolSafetyData }>()
+  private skippedPoolsSubject = new Subject<{ data: ParsedPoolCreationTx | PoolSafetyData, reason: string }>()
+  private NEW_POOLS_BUFFER = 10
   async start() {
+
     console.log(`Start Solana bot. Simulation=${config.simulateOnly}`)
 
     await this.fetchInitialWalletSOLBalance()
@@ -90,17 +109,204 @@ export class TradingBot {
     const raydium = new PublicKey(RAYDIUM_PUBLIC_KEY);
 
     this.onLogsSubscriptionId = this.connection.onLogs(raydium, async (txLogs) => {
-      if (this.seenTransactions.has(txLogs.signature)) {
-        return;
+      this.raydiumLogsSubject.next(txLogs)
+    })
+
+    const parseNewIcomingObservable = this.raydiumLogsSubject
+      .pipe(
+        distinct((x) => x.signature),
+        filter((x) => findLogEntry('init_pc_amount', x.logs) !== null),
+        map(x => x.signature),
+        mergeMap((txId) => from(parsePoolCreationTx(this.connection, txId)), 5),
+        map(x => checkIfPoolPostponed(x)),
+        map(x => { return { ...x, isEnabled: checkIfSwapEnabled(x.parsed).isEnabled } })
+      )
+
+    this.parseResSub = parseNewIcomingObservable.subscribe(parseResults => {
+      if (parseResults.startTime) {
+        this.postponedPoolsSubject.next({ kind: 'Postponed', parsed: parseResults.parsed, startTime: parseResults.startTime })
+      } else if (parseResults.isEnabled) {
+        this.readyToSafetyCheckSubject.next(parseResults.parsed)
+      } else {
+        this.skippedPoolsSubject.next({ data: parseResults.parsed, reason: 'Swapping is disabled' })
       }
-      this.seenTransactions.add(txLogs.signature);
-      if (!findLogEntry('init_pc_amount', txLogs.logs)) {
-        return; // If "init_pc_amount" is not in log entries then it's not LP initialization transaction
+    })
+
+    const postponedObservable = this.postponedPoolsSubject.pipe(
+      switchMap(x => from(this.waitUntilPoolStartsAndNotify(x.parsed, x.startTime)))
+    )
+
+    this.validationSub = this.readyToSafetyCheckSubject
+      .pipe(
+        map(x => {
+          const obj: WaitingLPMint = { kind: 'OK', data: x }
+          return obj
+        }),
+        concatWith(postponedObservable),
+        windowCount(this.NEW_POOLS_BUFFER),
+        mergeAll(),
+        mergeMap(parsed => {
+          switch (parsed.kind) {
+            case 'OK': {
+              return from(checkToken(this.connection, parsed.data))
+            }
+            case 'TO_LONG': {
+              const obj: WaitLPBurningTooLong = {
+                kind: 'WaitLPBurningTooLong',
+                data: parsed.data
+              }
+              return from([obj])
+            }
+          }
+        }, 3)
+      )
+      .subscribe({
+        next: safetyCheckResults => {
+          switch (
+          safetyCheckResults.kind) {
+            case 'CreatorIsScammer': {
+              const msg = `Pool ${safetyCheckResults.pool.poolKeys.id} Skipped because creator ${safetyCheckResults.pool.creator.toString()} is in blacklist.`
+              this.skippedPoolsSubject.next({ data: safetyCheckResults.pool, reason: msg })
+              break
+            }
+            case 'WaitLPBurningTooLong': {
+              const msg = `Pool ${safetyCheckResults.data.poolKeys.id} Skipped because it's postponed for too long.`
+              this.skippedPoolsSubject.next({ data: safetyCheckResults.data, reason: msg })
+              break
+            }
+            case 'WaitLPBurning': {
+              this.waitingLPToBurnPoolsSubject.next(safetyCheckResults)
+              break
+            }
+            case 'Complete': {
+              this.safetyCheckCompleteSubject.next(safetyCheckResults)
+              break
+            }
+          }
+        },
+        error: error => {
+          console.error(error)
+        }
+      })
+
+    const waitLPBurnedObservable: Observable<WaitLPBurningComplete> = this.waitingLPToBurnPoolsSubject.pipe(
+      mergeMap(x => from(this.waitUntilLPTokensAreBurned(x.data, x.lpTokenMint)), 10),
+      mergeMap(x => from(getTokenOwnershipInfo(this.connection, x.data.tokenMint))
+        .pipe(
+          map(res => { return { ...x, data: { ...x.data, ownershipInfo: res } } })
+        )
+      )
+    )
+
+    this.pushToTradingTrendSub = this.safetyCheckCompleteSubject.pipe(
+      concatWith(waitLPBurnedObservable),
+      map(x => evaluateSafetyState(x.data, x.isliquidityLocked)),
+      switchMap(data => {
+        if (data.status === 'RED') {
+          return EMPTY
+        } else {
+          return from(checkLatestTrades(this.connection, data.data.pool))
+            .pipe(
+              map(x => { return { data: data.data, status: data.status, statusReason: data.reason, tradingInfo: x } })
+            )
+        }
+      })
+    )
+      .subscribe({
+        next: data => {
+          this.checkTokenStatusAndTradingTrend({ pool: data.data, safetyStatus: data.status, statusReason: data.statusReason, tradingInfo: data.tradingInfo })
+        },
+        error: e => {
+          console.error(`${e}`)
+        }
+      })
+
+
+    this.tradingSub = this.readyToTradeSubject
+      .pipe(
+        mergeMap(x =>
+          from(tryPerformTrading(this.connection, x.data.pool, x.status))
+            .pipe(map(tr => { return { poolData: x.data, results: tr } }))
+        )
+      )
+      .subscribe({
+        next: x => this.onTradingResults(x.poolData.pool.id.toString(), x.results),
+        error: e => {
+          console.error(`${e}`)
+        }
+      })
+
+
+    console.log(chalk.cyan('Listening to new pools...'))
+  }
+
+  private checkTokenStatusAndTradingTrend(data: { pool: PoolSafetyData, safetyStatus: TokenSafetyStatus, statusReason: string, tradingInfo: TradingInfo }) {
+    if (data.safetyStatus === 'RED') {
+      // Should be verified and filterd out earlier
+      return
+    }
+
+    if (data.tradingInfo.dump) {
+      const log = `Already dumped. TX1: https://solscan.io/tx/${data.tradingInfo.dump[0].signature} TX2:TX1: https://solscan.io/tx/${data.tradingInfo.dump[1].signature}`
+      this.skippedPoolsSubject.next({ data: data.pool, reason: log })
+      return
+    }
+
+    const tradingAnalisis = data.tradingInfo.analysis
+    if (!tradingAnalisis) {
+      this.skippedPoolsSubject.next({ data: data.pool, reason: `Couldn't fetch trades` })
+      return
+    }
+
+    if (data.safetyStatus === 'GREEN') {
+      if (tradingAnalisis.type === 'PUMPING' || tradingAnalisis.type === 'EQUILIBRIUM') {
+        this.readyToTradeSubject.next({ status: data.safetyStatus, data: data.pool })
+      } else {
+        this.skippedPoolsSubject.next({ data: data.pool, reason: `Trend is DUMPING` })
       }
 
-      this.handleNewPoolMintTx(txLogs.signature)
-    });
-    console.log(chalk.cyan('Listening to new pools...'))
+      return
+    }
+
+    if (tradingAnalisis.type !== 'PUMPING') {
+      this.skippedPoolsSubject.next({ data: data.pool, reason: `Trend is DUMPING` })
+      return
+    }
+
+    if (tradingAnalisis.volatility > config.safePriceValotilityRate) {
+      const msg = `Not GREEN token and Price volatility is to high ${tradingAnalisis.volatility}`
+      this.skippedPoolsSubject.next({ data: data.pool, reason: msg })
+      return
+    }
+
+    if (tradingAnalisis.buysCount < config.safeBuysCountInFirstMinute) {
+      const msg = `Not GREEN token and Very little BUY txs ${tradingAnalisis.buysCount}`
+      this.skippedPoolsSubject.next({ data: data.pool, reason: msg })
+      return
+    }
+
+    this.readyToTradeSubject.next({ status: data.safetyStatus, data: data.pool })
+  }
+
+  async waitUntilPoolStartsAndNotify(parsed: ParsedPoolCreationTx, startTime: number): Promise<WaitingLPMint> {
+    const delayBeforeStart = (startTime * 1000) - Date.now()
+    const maxTimeToWait = 24 * 60 * 60 * 1000
+    if (delayBeforeStart > 0 && delayBeforeStart < maxTimeToWait) {
+      console.log(`Wait until it starts`)
+      await delay(delayBeforeStart + 300)
+      return { kind: 'OK', data: parsed }
+    } else {
+      return { kind: 'TO_LONG', data: parsed }
+    }
+  }
+
+  async waitUntilLPTokensAreBurned(safetyData: PoolSafetyData, lpTokenMint: PublicKey): Promise<WaitLPBurningComplete> {
+    const isLiquidityLocked = await checkLPTokenBurnedOrTimeout(
+      this.connection,
+      lpTokenMint,
+      2 * 60 * 60 * 1000
+    )
+    return { kind: 'WaitLPBurningComplete', isliquidityLocked: isLiquidityLocked, data: safetyData }
   }
 
   stop() {
@@ -146,137 +352,5 @@ export class TradingBot {
 
     this.updateWSOLBalance(tradeResults)
     console.log(chalk.yellow('Got trading results'))
-  }
-
-  private async startTrading(validationResults: PoolValidationResults) {
-    console.log(`Start trading for pool ${validationResults.pool.id}`)
-    this.runningTradesCount++
-    if (this.maxCountOfSimulteniousTradings < this.runningTradesCount) {
-      this.maxCountOfSimulteniousTradings = this.runningTradesCount
-    }
-    console.log(`Running Traders - current: ${this.runningTradesCount}, max: ${this.maxCountOfSimulteniousTradings} `)
-    tryPerformTrading(this.connection, validationResults)
-      .then(x => this.onTradingResults(validationResults.pool.id, x))
-      .catch(this.onError)
-  }
-
-  private evaluateTradingDecision(validationResults: PoolValidationResults): TradingDecision {
-    if (validationResults.safetyStatus === 'RED') {
-      const msg = `Pool: ${validationResults.pool.id}, RED token.\n${JSON.stringify(validationResults)}`
-      return { kind: 'BAD', reason: msg }
-    }
-
-    if (validationResults.safetyStatus !== 'GREEN') {
-      if (validationResults.trend!.volatility > config.safePriceValotilityRate) {
-        const msg = `Pool: ${validationResults.pool.id}, Not GREEN token and Price volatility is to high ${validationResults.trend!.volatility}`
-        return { kind: 'BAD', reason: msg }
-      }
-
-      if (validationResults.trend!.buysCount < config.safeBuysCountInFirstMinute) {
-        const msg = `Pool: ${validationResults.pool.id}, Not GREEN token and Very little BUY txs ${validationResults.trend!.buysCount}`
-        return { kind: 'BAD', reason: msg }
-      }
-    }
-
-    return { kind: 'OK' }
-  }
-
-  private async onPoolValidationResults(txId: string, validationResults: PoolValidationResults | string) {
-    this.runningValidatorsCount--
-    if (this.onLogsSubscriptionId === null) { return }
-
-    this.runningValidations.set(txId, `Initial validation results: ${JSON.stringify(validationResults)}`)
-
-    // When error happened
-    if (typeof validationResults === `string`) {
-      console.log(`Failed to validate pool by first min tx https://solscan.io/tx/${txId}\nValidaition Error: ${validationResults}`)
-      this.skippedPools.push(`Failed to validate pool by first min tx https://solscan.io/tx/${txId}\nValidaition Error: ${validationResults}`)
-      this.runningValidations.delete(txId)
-      this.validationErrors.push(`MintTx: ${txId}, error: ${validationResults}`)
-      // Notify state listener onPoolValidationFailed
-      return
-    }
-
-    console.log(chalk.yellow(`Validation results for pool ${validationResults.pool.id}`))
-    // If pool is postponed
-    if (validationResults.startTimeInEpoch) {
-      console.log(`Pool ${validationResults.pool.id} is postponed to ${formatDate(new Date(validationResults.startTimeInEpoch))}`)
-      this.runningValidations.set(txId, `Pool is postponed to ${formatDate(new Date(validationResults.startTimeInEpoch))} wait for it. ${JSON.stringify(validationResults)}`)
-      const delayBeforeStart = (validationResults.startTimeInEpoch * 1000) - Date.now()
-      const maxTimeToWait = 24 * 60 * 60 * 1000
-      if (delayBeforeStart > 0 && delayBeforeStart < maxTimeToWait) {
-        console.log(`Wait until it starts`)
-        await delay(delayBeforeStart + 300)
-        if (this.onLogsSubscriptionId === null) { return }
-        console.log(`Running Validators - current: ${this.runningValidatorsCount}, max: ${this.maxCountOfSimulteniousValidators}`)
-        this.runningValidations.set(txId, `Postponed pool has started, performing another validation. ${JSON.stringify(validationResults)}`)
-        validationResults = await validateNewPool(this.connection, txId)
-        this.runningValidations.set(txId, `Received updated results for postponed pool. ${JSON.stringify(validationResults)}`)
-        if (this.onLogsSubscriptionId === null) { return }
-        console.log(`Got updated results`)
-      } else {
-        this.skippedPools.push(`Pool ${validationResults.pool.id} Skipped because it's postponed for too long.`)
-        this.runningValidations.delete(txId)
-        this.runningValidatorsCount--
-        console.log(`It's too long, don't wait. Need to add more robust scheduler`)
-        return
-      }
-    }
-
-    this.runningValidations.delete(txId)
-    this.runningValidatorsCount--
-
-    if (typeof validationResults === `string`) {
-      console.log(`Failed to validate postponed Pool TxId ${txId} with error: ${validationResults}`)
-      this.skippedPools.push(`Failed to validate postponed Pool TxId ${txId} with error: ${validationResults}`)
-      this.validationErrors.push(`MintTx: ${txId}, error: ${validationResults}`)
-      // Notify state listener onPoolValidationFailed
-      return
-    }
-
-    this.allValidatedPools.set(validationResults.pool.id, JSON.stringify(validationResults.safetyStatus))
-
-    // Notify state listener onPoolValidationCompleted
-    console.log(`Token in pool ${validationResults.pool.id} is ${validationResults.safetyStatus}`)
-    console.log(`Pool ${validationResults.pool.id} validation results reason is ${validationResults.reason}`)
-    console.log(`Pool ${validationResults.pool.id} trend is ${JSON.stringify(validationResults.trend)}`)
-
-    const tradingDecision = this.evaluateTradingDecision(validationResults)
-    console.log(`Pool: ${validationResults.pool.id} trading decision: ${tradingDecision.kind}`)
-    switch (tradingDecision.kind) {
-      case 'BAD': {
-        console.log(`Pool: ${validationResults.pool.id} Ignore BAD token trading. ${tradingDecision.reason}`)
-        this.skippedPools.push(tradingDecision.kind)
-        break
-      }
-      case 'OK': {
-        console.log(`Pool: ${validationResults.pool.id} Try OK token trading.`)
-        this.startTrading(validationResults)
-        break
-      }
-    }
-  }
-
-  private async handleNewPoolMintTx(txId: string) {
-    if (this.onLogsSubscriptionId === null) { return }
-
-    if (this.runningValidatorsCount === config.validatorsLimit) {
-      console.log(chalk.yellow(`Find pool with tx - ${txId} but limit of ${config.validatorsLimit} has been reached. Skipped`))
-      this.skippedPools.push(`Find pool with tx - ${txId} but limit of ${config.validatorsLimit} has been reached. Skipped`)
-      return
-    }
-    console.log(chalk.yellow(`Received first mint tx https://solscan.io/tx/${txId}. Start processing.`))
-
-    this.runningValidatorsCount++
-    if (this.runningValidatorsCount > this.maxCountOfSimulteniousValidators) {
-      this.maxCountOfSimulteniousValidators = this.runningValidatorsCount
-    }
-    console.log(`Running Validators - current: ${this.runningValidatorsCount}, max: ${this.maxCountOfSimulteniousValidators}`)
-
-    this.runningValidations.set(txId, `Running iniitial validation.`)
-
-    validateNewPool(this.connection, txId)
-      .then(res => this.onPoolValidationResults(txId, res))
-      .catch(this.onError)
   }
 }

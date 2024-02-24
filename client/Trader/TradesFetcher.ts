@@ -1,5 +1,5 @@
 import { PublicKey, ParsedTransactionWithMeta, Connection, ParsedAccountData } from '@solana/web3.js'
-import { WSOL } from '@raydium-io/raydium-sdk'
+import { LiquidityPoolKeysV4, WSOL } from '@raydium-io/raydium-sdk'
 import { PoolKeys } from '../PoolValidator/RaydiumPoolParser'
 import path from 'path'
 import fs from 'fs'
@@ -29,10 +29,10 @@ interface SPLTransferInfo {
 
 export async function fetchLatestTrades(
   connection: Connection,
-  poolKeys: PoolKeys,
+  poolKeys: LiquidityPoolKeysV4,
   tradesLimit: number | null = null
 ): Promise<TradeRecord[]> {
-  const isTokenBase = poolKeys.quoteMint === WSOL.mint
+  const isTokenBase = poolKeys.quoteMint.toString() === WSOL.mint
   const tokenMintAddress = isTokenBase ? poolKeys.baseMint : poolKeys.quoteMint
   const tokenDecimals = isTokenBase ? poolKeys.baseDecimals : poolKeys.quoteDecimals
   const txs = await fetchAllTransactions(connection, new PublicKey(poolKeys.id), tradesLimit)
@@ -40,7 +40,7 @@ export async function fetchLatestTrades(
   tradeRecords.sort((a, b) => a.epochTime - b.epochTime)
   if (config.dumpTradingHistoryToFile) {
     const startDumpingToFile = new Date()
-    saveToCSV(poolKeys.id, tradeRecords)
+    saveToCSV(poolKeys.id.toString(), tradeRecords)
     const endDumpingToFile = new Date()
     console.log(`Poole ${poolKeys.id}. Dumping to file took ${endDumpingToFile.getUTCSeconds() - startDumpingToFile.getUTCSeconds()}`)
   }
@@ -66,7 +66,7 @@ async function fetchAllTransactions(connection: Connection, address: PublicKey, 
 }
 
 async function parseTradingData(
-  poolKeys: PoolKeys,
+  poolKeys: LiquidityPoolKeysV4,
   transactions: (ParsedTransactionWithMeta | null)[],
   tokenMint: PublicKey,
   tokenDecimals: number): Promise<TradeRecord[]> {
@@ -84,9 +84,9 @@ async function parseTradingData(
       const inInfo: SPLTransferInfo = (splTransferPair[0] as any).parsed.info
       const outInfo: SPLTransferInfo = (splTransferPair[1] as any).parsed.info
 
-      const quoteIsToken = poolKeys.quoteMint === tokenMint.toString()
+      const quoteIsToken = poolKeys.quoteMint.toString() === tokenMint.toString()
 
-      const isSelling = quoteIsToken ? inInfo.destination === poolKeys.quoteVault : inInfo.destination === poolKeys.baseVault  //userOtherTokenPostBalance < userOtherTokenPreBalance
+      const isSelling = quoteIsToken ? inInfo.destination === poolKeys.quoteVault.toString() : inInfo.destination === poolKeys.baseVault.toString()  //userOtherTokenPostBalance < userOtherTokenPreBalance
       const txDate = new Date(0)
       txDate.setUTCSeconds(txOrNull.blockTime ?? 0)
 
