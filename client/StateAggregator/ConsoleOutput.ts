@@ -9,14 +9,16 @@ import { PoolSafetyData, SafetyCheckResult } from '../PoolValidator/RaydiumSafet
 import { TokenSafetyStatus } from '../PoolValidator/ValidationResult';
 import { SellResults } from '../Trader/SellToken';
 import { BuyResult } from '../Trader/BuyToken';
+import { getStateRecordByPoolId, upsertRecord } from './DbWriter'
 
 
 ///Color(+Reason) ID(First mint TX/PoolId)   StartTime		TokenId		Liquidity		Percent in Pool		Is Mintable	 Buy		Sell 		Profit
 
-let allRecordsByFirstMintTx = new Map<string, StateRecord>()
+//let allRecordsByFirstMintTx = new Map<string, StateRecord>()
 
-function getOrMakeRecordByTxId(poolId: string): StateRecord {
-  return allRecordsByFirstMintTx.get(poolId) ?? createStateRecord({ poolId, status: 'Just created' })
+async function getOrMakeRecordByTxId(poolId: string): Promise<StateRecord> {
+  const dbRecord = await getStateRecordByPoolId(poolId)
+  return dbRecord ?? createStateRecord({ poolId, status: 'Just created' })
 }
 
 
@@ -25,16 +27,16 @@ const table = new Table({
   , //colWidths: [100, 200]
 })
 
-export function renderCurrentState() {
-  table.length = 0
+// export function renderCurrentState() {
+//   table.length = 0
 
-  for (const record of allRecordsByFirstMintTx.values()) {
-    const converted = recordToConsoleTable(record)
-    table.push(converted)
-  }
+//   for (const record of allRecordsByFirstMintTx.values()) {
+//     const converted = recordToConsoleTable(record)
+//     table.push(converted)
+//   }
 
-  logUpdate(table.toString())
-}
+//   logUpdate(table.toString())
+// }
 
 function recordToConsoleTable(record: StateRecord): string[] {
   // let safetyStatus = '⚪\nUnknown'
@@ -65,8 +67,10 @@ function recordToConsoleTable(record: StateRecord): string[] {
 
 //**** Pool creation + validation ****//
 
-export function onPoolDataParsed(parsed: ParsedPoolCreationTx, startTime: number | null, isEnabled: boolean) {
-  if (allRecordsByFirstMintTx.has(parsed.poolKeys.id)) { return }
+export async function onPoolDataParsed(parsed: ParsedPoolCreationTx, startTime: number | null, isEnabled: boolean) {
+  const dbRecord = await getStateRecordByPoolId(parsed.poolKeys.id)
+  if (dbRecord) { return }
+
   const tokenId = parsed.poolKeys.baseMint !== WSOL.mint ? parsed.poolKeys.baseMint : parsed.poolKeys.quoteMint;
 
   let status = ''
@@ -82,12 +86,13 @@ export function onPoolDataParsed(parsed: ParsedPoolCreationTx, startTime: number
 
   const record = createStateRecord({ poolId: parsed.poolKeys.id, status: status })
 
-  allRecordsByFirstMintTx.set(parsed.poolKeys.id, { ...record, tokenId, startTime: startDate, status })
-  renderCurrentState()
+  //allRecordsByFirstMintTx.set(parsed.poolKeys.id, { ...record, tokenId, startTime: startDate, status })
+  await upsertRecord({ ...record, tokenId, startTime: startDate, status })
+  //renderCurrentState()
 }
 
 
-export function onPoolValidationChanged(results: SafetyCheckResult) {
+export async function onPoolValidationChanged(results: SafetyCheckResult) {
   let poolId = ''
   let status = ''
   switch (results.kind) {
@@ -113,17 +118,18 @@ export function onPoolValidationChanged(results: SafetyCheckResult) {
     }
   }
 
-  const record = getOrMakeRecordByTxId(poolId)
+  const record = await getOrMakeRecordByTxId(poolId)
   const updated = {
     ...record,
     status,
   }
-  allRecordsByFirstMintTx.set(poolId, updated)
-  renderCurrentState()
+  // /allRecordsByFirstMintTx.set(poolId, updated)
+  upsertRecord(updated)
+  //renderCurrentState()
 }
 
-export function onPoolValidationEvaluated(data: { status: TokenSafetyStatus, data: PoolSafetyData, reason: string }) {
-  const record = getOrMakeRecordByTxId(data.data.pool.id.toString())
+export async function onPoolValidationEvaluated(data: { status: TokenSafetyStatus, data: PoolSafetyData, reason: string }) {
+  const record = await getOrMakeRecordByTxId(data.data.pool.id.toString())
   let tokenSafetyIndicator = ''
   switch (data.status) {
     case 'RED': {
@@ -145,41 +151,45 @@ export function onPoolValidationEvaluated(data: { status: TokenSafetyStatus, dat
     ...record,
     status: tokenSafetyIndicator,
   }
-  allRecordsByFirstMintTx.set(data.data.pool.id.toString(), updated)
-  renderCurrentState()
+  //allRecordsByFirstMintTx.set(data.data.pool.id.toString(), updated)
+  //renderCurrentState()
+  upsertRecord(updated)
 }
-export function onStartGettingTrades(data: { status: TokenSafetyStatus, data: PoolSafetyData, reason: string }) {
-  const record = getOrMakeRecordByTxId(data.data.pool.id.toString())
+export async function onStartGettingTrades(data: { status: TokenSafetyStatus, data: PoolSafetyData, reason: string }) {
+  const record = await getOrMakeRecordByTxId(data.data.pool.id.toString())
   const updated = {
     ...record,
     status: `${record.status}\nGetting trades txs`,
   }
-  allRecordsByFirstMintTx.set(data.data.pool.id.toString(), updated)
-  renderCurrentState()
+  // allRecordsByFirstMintTx.set(data.data.pool.id.toString(), updated)
+  // renderCurrentState()
+  upsertRecord(updated)
 }
 
-export function onTradesEvaluated(data: PoolSafetyData, status: string) {
-  const record = getOrMakeRecordByTxId(data.pool.id.toString())
+export async function onTradesEvaluated(data: PoolSafetyData, status: string) {
+  const record = await getOrMakeRecordByTxId(data.pool.id.toString())
   const updated = {
     ...record,
     status: `${record.status}\n${status}`,
   }
-  allRecordsByFirstMintTx.set(data.pool.id.toString(), updated)
-  renderCurrentState()
+  // allRecordsByFirstMintTx.set(data.pool.id.toString(), updated)
+  // renderCurrentState()
+  upsertRecord(updated)
 }
 
-export function onStartTrading(data: PoolSafetyData) {
-  const record = getOrMakeRecordByTxId(data.pool.id.toString())
+export async function onStartTrading(data: PoolSafetyData) {
+  const record = await getOrMakeRecordByTxId(data.pool.id.toString())
   const updated = {
     ...record,
     buyInfo: 'started',
   }
-  allRecordsByFirstMintTx.set(data.pool.id.toString(), updated)
-  renderCurrentState()
+  // allRecordsByFirstMintTx.set(data.pool.id.toString(), updated)
+  // renderCurrentState()
+  upsertRecord(updated)
 }
 
-export function onFinishTrading(data: PoolSafetyData, results: SellResults) {
-  const record = getOrMakeRecordByTxId(data.pool.id.toString())
+export async function onFinishTrading(data: PoolSafetyData, results: SellResults) {
+  const record = await getOrMakeRecordByTxId(data.pool.id.toString())
   let sellInfo = ''
   let buyInfo = ''
   let estimatedProfit = ''
@@ -209,12 +219,13 @@ export function onFinishTrading(data: PoolSafetyData, results: SellResults) {
     sellInfo: sellInfo,
     profit: `${estimatedProfit}\n${finalProfit}`
   }
-  allRecordsByFirstMintTx.set(data.pool.id.toString(), updated)
-  renderCurrentState()
+  // allRecordsByFirstMintTx.set(data.pool.id.toString(), updated)
+  // renderCurrentState()
+  upsertRecord(updated)
 }
 
-export function onBuyResults(poolId: string, buyResults: BuyResult) {
-  const record = getOrMakeRecordByTxId(poolId)
+export async function onBuyResults(poolId: string, buyResults: BuyResult) {
+  const record = await getOrMakeRecordByTxId(poolId)
   let buyInfo = ''
   switch (buyResults.kind) {
     case 'NO_BUY': {
@@ -238,13 +249,14 @@ export function onBuyResults(poolId: string, buyResults: BuyResult) {
     ...record,
     buyInfo: buyInfo
   }
-  allRecordsByFirstMintTx.set(poolId, updated)
-  renderCurrentState()
+  // allRecordsByFirstMintTx.set(poolId, updated)
+  // renderCurrentState()
+  upsertRecord(updated)
 }
 
 
-export function onTradingPNLChanged(poolId: string, newPNL: number) {
-  const record = getOrMakeRecordByTxId(poolId)
+export async function onTradingPNLChanged(poolId: string, newPNL: number) {
+  const record = await getOrMakeRecordByTxId(poolId)
   const currentMax = record.maxProfit
   let updatedMaxPNL = 0
   if (currentMax) {
@@ -256,6 +268,7 @@ export function onTradingPNLChanged(poolId: string, newPNL: number) {
     ...record,
     maxProfit: updatedMaxPNL
   }
-  allRecordsByFirstMintTx.set(poolId, updated)
-  renderCurrentState()
+  // allRecordsByFirstMintTx.set(poolId, updated)
+  // renderCurrentState()
+  upsertRecord(updated)
 }

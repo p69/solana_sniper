@@ -33,6 +33,8 @@ export type StateRecord = {
   maxProfit: number | null,
 }
 
+export type TradingWallet = { id: number, startValue: number, current: number, totalProfit: number }
+
 
 
 export function createStateRecord(

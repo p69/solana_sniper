@@ -11,6 +11,8 @@ import { EMPTY, Observable, Subject, concatWith, distinct, filter, from, map, me
 import { checkLPTokenBurnedOrTimeout, checkToken, getTokenOwnershipInfo, PoolSafetyData, SafetyCheckComplete, WaitLPBurning, WaitLPBurningComplete, WaitLPBurningTooLong } from './PoolValidator/RaydiumSafetyCheck';
 import { TokenSafetyStatus } from './PoolValidator/ValidationResult';
 import { onFinishTrading, onPoolDataParsed, onPoolValidationChanged, onPoolValidationEvaluated, onStartGettingTrades, onStartTrading, onTradesEvaluated } from './StateAggregator/ConsoleOutput';
+import { createNewTradingWallet, initializeDb, updateTradingWalletRecord } from './StateAggregator/DbWriter'
+import { TradingWallet } from './StateAggregator/StateTypes';
 
 
 const RAYDIUM_PUBLIC_KEY = '675kPX9MHTjS2zt1qfr1NYHuzeLXfQM9H24wFSUt1Mp8';
@@ -30,10 +32,15 @@ type WaitingLPMint = WaitingLPMintTooLong | WaitingLPMintOk
 export class TradingBot {
   private onLogsSubscriptionId: number | null = null
   private connection: Connection
-  private tradingWallet: { startValue: number, current: number, totalProfit: number } = {
+  private tradingWallet: TradingWallet = {
+    id: 0,
     startValue: 1,
     current: 1,
     totalProfit: 0
+  }
+
+  getWalletTradingInfo(): TradingWallet {
+    return this.tradingWallet
   }
 
   validationSub: any;
@@ -70,6 +77,7 @@ export class TradingBot {
       this.tradingWallet = { ...this.tradingWallet, current: newWalletBalance, totalProfit }
 
       console.log(`Wallet:\n${JSON.stringify(this.tradingWallet, null, 2)}`)
+      updateTradingWalletRecord(this.tradingWallet)
     }
   }
 
@@ -92,6 +100,8 @@ export class TradingBot {
   async start() {
 
     console.log(`Start Solana bot. Simulation=${config.simulateOnly}`)
+    await initializeDb()
+    this.tradingWallet = (await createNewTradingWallet())!
 
     await this.fetchInitialWalletSOLBalance()
 
@@ -113,8 +123,8 @@ export class TradingBot {
         map(x => { return { ...x, isEnabled: checkIfSwapEnabled(x.parsed).isEnabled } })
       )
 
-    this.parseResSub = parseNewIcomingObservable.subscribe(parseResults => {
-      onPoolDataParsed(parseResults.parsed, parseResults.startTime, parseResults.isEnabled)
+    this.parseResSub = parseNewIcomingObservable.subscribe(async (parseResults) => {
+      await onPoolDataParsed(parseResults.parsed, parseResults.startTime, parseResults.isEnabled)
       if (parseResults.startTime) {
         this.postponedPoolsSubject.next({ kind: 'Postponed', parsed: parseResults.parsed, startTime: parseResults.startTime })
       } else if (parseResults.isEnabled) {

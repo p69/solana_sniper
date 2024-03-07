@@ -32,13 +32,13 @@ app.get('/stop', (req: Request, res: Response) => {
   }
 })
 
-// app.get('/wallet', (req: Request, res: Response) => {
-//   if (bot.isStarted()) {
-//     res.send(`Bot is started. Current wallet:\n${JSON.stringify(bot.getWalletTradingInfo())}`)
-//   } else {
-//     res.send(`Bot is not started. Current wallet:\n${JSON.stringify(bot.getWalletTradingInfo())}`)
-//   }
-// })
+app.get('/wallet', (req: Request, res: Response) => {
+  if (bot.isStarted()) {
+    res.send(`Bot is started. Current wallet:\n${JSON.stringify(bot.getWalletTradingInfo())}`)
+  } else {
+    res.send(`Bot is not started. Current wallet:\n${JSON.stringify(bot.getWalletTradingInfo())}`)
+  }
+})
 
 // app.get('/skipped', (req: Request, res: Response) => {
 //   res.send(JSON.stringify(bot.getSkippedPools()))
