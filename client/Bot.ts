@@ -7,7 +7,7 @@ import { config } from './Config';
 import { SellResults } from './Trader/SellToken';
 import { SOL_SPL_TOKEN_ADDRESS } from './Trader/Addresses';
 import { tryPerformTrading } from './Trader/Trader';
-import { EMPTY, Observable, Subject, concatWith, distinct, filter, from, map, mergeAll, mergeMap, switchMap, windowCount } from 'rxjs';
+import { EMPTY, Observable, ObservableInput, ObservedValueOf, OperatorFunction, Subject, catchError, concatWith, distinct, filter, from, map, mergeAll, mergeMap, switchMap, windowCount } from 'rxjs';
 import { checkLPTokenBurnedOrTimeout, checkToken, getTokenOwnershipInfo, PoolSafetyData, SafetyCheckComplete, WaitLPBurning, WaitLPBurningComplete, WaitLPBurningTooLong } from './PoolValidator/RaydiumSafetyCheck';
 import { TokenSafetyStatus } from './PoolValidator/ValidationResult';
 import { onFinishTrading, onPoolDataParsed, onPoolValidationChanged, onPoolValidationEvaluated, onStartGettingTrades, onStartTrading, onTradesEvaluated } from './StateAggregator/ConsoleOutput';
@@ -118,7 +118,7 @@ export class TradingBot {
         distinct((x) => x.signature),
         filter((x) => findLogEntry('init_pc_amount', x.logs) !== null),
         map(x => x.signature),
-        mergeMap((txId) => from(parsePoolCreationTx(this.connection, txId)), 5),
+        mergeMap((txId) => from(parsePoolCreationTx(this.connection, txId)).pipe(printError()), 5),
         map(x => checkIfPoolPostponed(x)),
         map(x => { return { ...x, isEnabled: checkIfSwapEnabled(x.parsed).isEnabled } })
       )
@@ -337,4 +337,11 @@ export class TradingBot {
     this.updateWSOLBalance(tradeResults)
     console.log(chalk.yellow('Got trading results'))
   }
+}
+
+function printError<T, O extends ObservableInput<any>>(): OperatorFunction<T, T | ObservedValueOf<O>> {
+  return catchError(e => {
+    console.error(e)
+    return EMPTY
+  })
 }
