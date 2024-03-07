@@ -1,8 +1,6 @@
 import Table from 'cli-table3'
 import { StateRecord, createStateRecord } from './StateTypes'
-import { PoolKeys } from '../PoolValidator/RaydiumPoolParser'
 import { WSOL } from '@raydium-io/raydium-sdk'
-import logUpdate from 'log-update';
 import { formatDate } from '../Utils';
 import { ParsedPoolCreationTx } from '../PoolValidator/RaydiumPoolValidator';
 import { PoolSafetyData, SafetyCheckResult } from '../PoolValidator/RaydiumSafetyCheck';
