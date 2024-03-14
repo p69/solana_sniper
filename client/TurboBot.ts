@@ -65,7 +65,7 @@ export class TurboBot {
       const raydium = new PublicKey(RAYDIUM_PUBLIC_KEY);
 
       let isCheckingPool = false
-      this.onLogsSubscriptionId = this.connection.onLogs(raydium, async (txLogs) => {
+      const subId = this.connection.onLogs(raydium, async (txLogs) => {
         //console.log(`Log received. ${txLogs.signature}`)
         if (isCheckingPool || this.seenTxs.has(txLogs.signature)) { return }
         isCheckingPool = true
@@ -110,6 +110,8 @@ export class TurboBot {
         }
         isCheckingPool = false
       })
+      this.onLogsSubscriptionId = subId
+      console.log(`Sub ID: ${subId}`)
     })
   }
 
