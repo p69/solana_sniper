@@ -48,8 +48,10 @@ export class TurboBot {
   }
 
   private async fetchInitialWalletSOLBalance() {
-    if (config.simulateOnly) { return }
+    //if (config.simulateOnly) { return }
+    console.log(`Fetching wallet balance`)
     const balance = ((await this.connection.getTokenAccountBalance(SOL_SPL_TOKEN_ADDRESS)).value.uiAmount ?? 0)
+    console.log(`Balance is ${balance}`)
     this.tradingWallet.current = balance
     this.tradingWallet.startValue = balance
   }
