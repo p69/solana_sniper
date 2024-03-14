@@ -8,6 +8,7 @@ import { OWNER_ADDRESS, SOL_SPL_TOKEN_ADDRESS } from './Trader/Addresses';
 import { tryPerformTrading } from './Trader/Trader';
 import { checkToken } from './PoolValidator/RaydiumSafetyCheck';
 import { TradingWallet } from './StateAggregator/StateTypes';
+import WebSocket from 'ws';
 
 
 const RAYDIUM_PUBLIC_KEY = '675kPX9MHTjS2zt1qfr1NYHuzeLXfQM9H24wFSUt1Mp8';
@@ -65,8 +66,9 @@ export class TurboBot {
       const raydium = new PublicKey(RAYDIUM_PUBLIC_KEY);
 
       let isCheckingPool = false
+      /*
       const subId = this.connection.onLogs(raydium, async (txLogs) => {
-        console.log(`Log received. ${txLogs.signature}`)
+        //console.log(`Log received. ${txLogs.signature}`)
         if (isCheckingPool || this.seenTxs.has(txLogs.signature)) { return }
         isCheckingPool = true
         this.seenTxs.add(txLogs.signature)
@@ -111,11 +113,29 @@ export class TurboBot {
         isCheckingPool = false
       })
       this.onLogsSubscriptionId = subId
+      */
 
-      const sub2 = this.connection.onSlotChange((slot) => {
-        console.log(`New slot: ${slot.slot}`)
-      })
-      console.log(`Sub 2: ${sub2}`)
+      const ws = new WebSocket(config.rpcWsURL)
+      ws.onopen = () => {
+        ws.send(
+          JSON.stringify({
+            "jsonrpc": "2.0",
+            "id": "1",
+            "method": "slotSubscribe"
+          })
+        )
+
+        ws.onmessage = (evt) => {
+          try {
+            console.log(`New slot from WS: ${evt.data.toString()}`)
+          } catch (e) {
+            console.log(e)
+          }
+        }
+      }
+      ws.onerror = (e) => {
+        console.log(`WS error: ${e}`)
+      }
     })
   }
 
