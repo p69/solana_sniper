@@ -134,7 +134,7 @@ export class TurboBot {
         }
       }
       ws.onerror = (e) => {
-        console.log(`WS error: ${e}`)
+        console.log(`WS error:\n${JSON.stringify(e, null, 2)}`)
       }
     })
   }
