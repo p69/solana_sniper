@@ -4,7 +4,7 @@ import chalk from 'chalk';
 import { parsePoolCreationTx, ParsedPoolCreationTx, checkIfPoolPostponed, checkIfSwapEnabled } from './PoolValidator/RaydiumPoolValidator';
 import { config } from './Config';
 import { SellResults } from './Trader/SellToken';
-import { SOL_SPL_TOKEN_ADDRESS } from './Trader/Addresses';
+import { OWNER_ADDRESS, SOL_SPL_TOKEN_ADDRESS } from './Trader/Addresses';
 import { tryPerformTrading } from './Trader/Trader';
 import { checkToken } from './PoolValidator/RaydiumSafetyCheck';
 import { TradingWallet } from './StateAggregator/StateTypes';
@@ -50,7 +50,7 @@ export class TurboBot {
   private async fetchInitialWalletSOLBalance() {
     //if (config.simulateOnly) { return }
     console.log(`Fetching wallet balance`)
-    const balance = ((await this.connection.getTokenAccountBalance(SOL_SPL_TOKEN_ADDRESS)).value.uiAmount ?? 0)
+    const balance = (await this.connection.getBalance(OWNER_ADDRESS)) //.getTokenAccountBalance(SOL_SPL_TOKEN_ADDRESS)).value.uiAmount ?? 0)
     console.log(`Balance is ${balance}`)
     this.tradingWallet.current = balance
     this.tradingWallet.startValue = balance
@@ -66,7 +66,7 @@ export class TurboBot {
 
       let isCheckingPool = false
       this.onLogsSubscriptionId = this.connection.onLogs(raydium, async (txLogs) => {
-        console.log(`Log received. ${txLogs.signature}`)
+        //console.log(`Log received. ${txLogs.signature}`)
         if (isCheckingPool || this.seenTxs.has(txLogs.signature)) { return }
         isCheckingPool = true
         this.seenTxs.add(txLogs.signature)
