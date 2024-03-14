@@ -48,9 +48,9 @@ export class TurboBot {
   }
 
   private async fetchInitialWalletSOLBalance() {
-    //if (config.simulateOnly) { return }
+    if (config.simulateOnly) { return }
     console.log(`Fetching wallet balance`)
-    const balance = (await this.connection.getBalance(OWNER_ADDRESS)) //.getTokenAccountBalance(SOL_SPL_TOKEN_ADDRESS)).value.uiAmount ?? 0)
+    const balance = (await this.connection.getTokenAccountBalance(SOL_SPL_TOKEN_ADDRESS)).value.uiAmount ?? 0
     console.log(`Balance is ${balance}`)
     this.tradingWallet.current = balance
     this.tradingWallet.startValue = balance
@@ -111,7 +111,11 @@ export class TurboBot {
         isCheckingPool = false
       })
       this.onLogsSubscriptionId = subId
-      console.log(`Sub ID: ${subId}`)
+
+      const sub2 = this.connection.onSlotChange((slot) => {
+        console.log(`New slot: ${slot.slot}`)
+      })
+      console.log(`Sub 2: ${sub2}`)
     })
   }
 
