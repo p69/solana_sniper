@@ -134,7 +134,7 @@ export class TurboBot {
         }
       }
       ws.onerror = (e) => {
-        console.log(`WS error:\n${e.error}`)
+        console.log(`WS error:\n${e.message}`)
       }
     })
   }
