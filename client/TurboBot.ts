@@ -134,10 +134,8 @@ export class TurboBot {
         }
       }
       ws.onerror = (e) => {
-        const msg = e.error.message;
-        const errorsCount = e.error.errors.length
-        console.log(`WS error msg: ${msg}`)
-        console.log(`WS inner errors count: ${errorsCount}`)
+        console.log(`WS error1: ${e.error.errors[0]}`)
+        console.log(`WS error2: ${e.error.errors[1]}`)
       }
     })
   }
