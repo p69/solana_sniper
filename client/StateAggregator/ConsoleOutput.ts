@@ -7,7 +7,8 @@ import { PoolSafetyData, SafetyCheckResult } from '../PoolValidator/RaydiumSafet
 import { TokenSafetyStatus } from '../PoolValidator/ValidationResult';
 import { SellResults } from '../Trader/SellToken';
 import { BuyResult } from '../Trader/BuyToken';
-import { getStateRecordByPoolId, upsertRecord } from './DbWriter'
+import { dbIsInited, getStateRecordByPoolId, upsertRecord } from './DbWriter'
+import chalk from 'chalk';
 
 
 ///Color(+Reason) ID(First mint TX/PoolId)   StartTime		TokenId		Liquidity		Percent in Pool		Is Mintable	 Buy		Sell 		Profit
@@ -223,7 +224,6 @@ export async function onFinishTrading(data: PoolSafetyData, results: SellResults
 }
 
 export async function onBuyResults(poolId: string, buyResults: BuyResult) {
-  const record = await getOrMakeRecordByTxId(poolId)
   let buyInfo = ''
   switch (buyResults.kind) {
     case 'NO_BUY': {
@@ -243,6 +243,14 @@ export async function onBuyResults(poolId: string, buyResults: BuyResult) {
       break
     }
   }
+
+  if (!dbIsInited) {
+    const isSuccess = buyResults.kind === 'SUCCESS'
+    console.log(isSuccess ? chalk.green(buyInfo) : chalk.red(buyInfo))
+    return
+  }
+
+  const record = await getOrMakeRecordByTxId(poolId)
   const updated = {
     ...record,
     buyInfo: buyInfo
@@ -254,6 +262,12 @@ export async function onBuyResults(poolId: string, buyResults: BuyResult) {
 
 
 export async function onTradingPNLChanged(poolId: string, newPNL: number) {
+  if (!dbIsInited) {
+    const isNegative = newPNL < 0
+    const logTxt = `PNL: ${(newPNL * 100).toFixed(2)}%`
+    console.log(isNegative ? chalk.red(logTxt) : chalk.green(logTxt))
+    return
+  }
   const record = await getOrMakeRecordByTxId(poolId)
   const currentMax = record.maxProfit
   let updatedMaxPNL = 0

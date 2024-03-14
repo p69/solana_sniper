@@ -3,6 +3,7 @@ import sqlite3 from 'sqlite3';
 import { StateRecord, TradingWallet } from './StateTypes';
 
 let db: Database<sqlite3.Database, sqlite3.Statement>
+export let dbIsInited = false
 
 export async function initializeDb() {
   db = await open({
@@ -33,6 +34,8 @@ export async function initializeDb() {
   )`);
 
   await db.exec(`CREATE INDEX IF NOT EXISTS idx_poolId ON state_records (poolId)`);
+
+  dbIsInited = true
 }
 
 export async function createNewTradingWallet(startValue: number = 1, current: number = 1, totalProfit: number = 0): Promise<TradingWallet | undefined> {

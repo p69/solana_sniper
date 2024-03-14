@@ -2,13 +2,14 @@ import { TokenSafetyStatus } from '../PoolValidator/ValidationResult'
 import { GeneralTokenCondition } from '../Swap'
 import { LiquidityPoolKeysV4, Token, TokenAmount, WSOL } from '@raydium-io/raydium-sdk'
 import { SOL_SPL_TOKEN_ADDRESS, PAYER, OWNER_ADDRESS } from "./Addresses"
-import { DANGEROUS_EXIT_STRATEGY, ExitStrategy, SAFE_EXIT_STRATEGY } from './ExitStrategy'
+import { DANGEROUS_EXIT_STRATEGY, ExitStrategy, SAFE_EXIT_STRATEGY, TURBO_EXIT_STRATEGY } from './ExitStrategy'
 import { formatDate } from '../Utils'
 import { buyToken } from './BuyToken'
 import { getAssociatedTokenAddressSync, TOKEN_PROGRAM_ID } from '@solana/spl-token'
 import { SellResults, sellToken } from './SellToken'
 import { Connection } from '@solana/web3.js'
 import { onBuyResults } from '../StateAggregator/ConsoleOutput'
+import { config } from '../Config'
 
 export type TraderResults = {
   boughtAmountInSOL: number | null,
@@ -44,7 +45,11 @@ export async function tryPerformTrading(connection: Connection, pool: LiquidityP
   const exitStrategy = getExitStrategy(safetyStatus)!
 
   const buyResult = await buyToken(connection, PAYER, buyAmount, tokenBToken, tokenBAccountAddress, pool, SOL_SPL_TOKEN_ADDRESS)
-  onBuyResults(pool.id.toString(), buyResult)
+
+  if (safetyStatus !== 'TURBO') {
+    onBuyResults(pool.id.toString(), buyResult)
+  }
+
   const buyDate = new Date()
 
   if (buyResult.kind !== 'SUCCESS') {
@@ -67,10 +72,14 @@ export async function tryPerformTrading(connection: Connection, pool: LiquidityP
 
 
 function getBuyAmountInSOL(tokenStatus: TokenSafetyStatus): number | null {
+  if (config.buySOLAmount) {
+    return config.buySOLAmount
+  }
   switch (tokenStatus) {
     case 'RED': return null
     case 'YELLOW': return 0.2
     case 'GREEN': return 0.3
+    case 'TURBO': return 0.1
   }
 }
 
@@ -79,6 +88,7 @@ function getExitStrategy(tokenStatus: TokenSafetyStatus): ExitStrategy | null {
     case 'RED': return null
     case 'YELLOW': return DANGEROUS_EXIT_STRATEGY
     case 'GREEN': return SAFE_EXIT_STRATEGY
+    case 'TURBO': return TURBO_EXIT_STRATEGY
   }
 }
 

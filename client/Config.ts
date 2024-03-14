@@ -16,6 +16,7 @@ interface Config {
   dumpTradingHistoryToFile: boolean,
   validatorsLimit: number,
   appPort: number,
+  buySOLAmount: number | null,
 }
 
 export let config: Config = {
@@ -29,5 +30,6 @@ export let config: Config = {
   walletPrivate: process.env.WALLET_PRIVATE_KEY!,
   dumpTradingHistoryToFile: process.env.DUMP_HISTORY_TRADING_RECORDS_TO_FILE === 'true',
   validatorsLimit: Number(process.env.VALIDATORS_LIMIT!),
-  appPort: process.env.APP_PORT ? Number(process.env.APP_PORT) : 3000
+  appPort: process.env.APP_PORT ? Number(process.env.APP_PORT) : 3000,
+  buySOLAmount: process.env.BUY_SOL_AMOUNT ? Number(process.env.BUY_SOL_AMOUNT) : null
 }

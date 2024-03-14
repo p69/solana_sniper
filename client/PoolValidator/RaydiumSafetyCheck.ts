@@ -63,7 +63,7 @@ export type SafetyCheckComplete = {
 
 export type SafetyCheckResult = WaitLPBurning | WaitLPBurningTooLong | WaitLPBurningComplete | CreatorIsInBlackList | SafetyCheckComplete
 
-export async function checkToken(connection: Connection, data: ParsedPoolCreationTx): Promise<SafetyCheckResult> {
+export async function checkToken(connection: Connection, data: ParsedPoolCreationTx, isLightCheck: boolean = false): Promise<SafetyCheckResult> {
   /// Check blacklist first
   if (KNOWN_SCAM_ACCOUNTS.has(data.creator.toString())) {
     return { kind: 'CreatorIsScammer', pool: data }
@@ -97,22 +97,24 @@ export async function checkToken(connection: Connection, data: ParsedPoolCreatio
 
   ///Check largest holders
   /// Should Raydiium LP
-  const largestAccounts = await connection.getTokenLargestAccounts(otherTokenMint);
-  const raydiumTokenAccount = await connection.getParsedTokenAccountsByOwner(new PublicKey(RAYDIUM_OWNER_AUTHORITY), { mint: otherTokenMint });
-
   let newTokenPoolBalancePercent = 0
-  if (largestAccounts.value.length > 0 && raydiumTokenAccount.value.length > 0) {
-    const poolAcc = raydiumTokenAccount.value[0].pubkey.toString()
-    const poolBalance = largestAccounts.value.find(x => x.address.toString() === poolAcc)
-    if (poolBalance) {
-      newTokenPoolBalancePercent = (poolBalance.uiAmount ?? 0) / ownershipInfo.totalSupply
+  if (!isLightCheck) {
+    const largestAccounts = await connection.getTokenLargestAccounts(otherTokenMint);
+    const raydiumTokenAccount = await connection.getParsedTokenAccountsByOwner(new PublicKey(RAYDIUM_OWNER_AUTHORITY), { mint: otherTokenMint });
+
+    if (largestAccounts.value.length > 0 && raydiumTokenAccount.value.length > 0) {
+      const poolAcc = raydiumTokenAccount.value[0].pubkey.toString()
+      const poolBalance = largestAccounts.value.find(x => x.address.toString() === poolAcc)
+      if (poolBalance) {
+        newTokenPoolBalancePercent = (poolBalance.uiAmount ?? 0) / ownershipInfo.totalSupply
+      }
     }
   }
 
   /// Get real liquiidity value
   const realCurrencyLPBalance = await connection.getTokenAccountBalance(new PublicKey(baseIsWSOL ? pool.baseVault : pool.quoteVault));
   //const lpVaultBalance = await connection.getTokenAccountBalance(poolKeys.lpVault);
-  const SOL_EXCHANGE_RATE = 110 /// With EXTRA as of 08.02.2024
+  const SOL_EXCHANGE_RATE = 150 /// With EXTRA as of 08.03.2024
   const liquitity = realCurrencyLPBalance.value.uiAmount ?? 0;
   const isSOL = realCurrencyLPBalance.value.decimals === WSOL.decimals;
   const symbol = isSOL ? 'SOL' : 'USD';
@@ -131,8 +133,13 @@ export async function checkToken(connection: Connection, data: ParsedPoolCreatio
     tokenMint: otherTokenMint
   }
 
-  let isLiquidityLocked = await checkIfLPTokenBurnedWithRetry(connection, 3, 200, data.lpTokenMint)
+  let isLiquidityLocked = false
 
+  if (isLightCheck) {
+    return { kind: 'Complete', data: resultData, isliquidityLocked: isLiquidityLocked }
+  }
+
+  isLiquidityLocked = await checkIfLPTokenBurnedWithRetry(connection, 3, 200, data.lpTokenMint)
   // Liqidity is not locked, but more than half of supply is in pool
   // Possible that LP token wiill be burned later. Wait for a few hours
   if (!isLiquidityLocked && newTokenPoolBalancePercent >= 0.5) {

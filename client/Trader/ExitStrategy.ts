@@ -21,3 +21,9 @@ export const RED_TEST_EXIT_STRATEGY: ExitStrategy = {
   targetProfit: 0.01, // make 9% (10% for slippage) in more secure way. owner could dump all tokens
   profitCalcIterationDelayMillis: 500 // 0.5 seconds
 }
+
+export const TURBO_EXIT_STRATEGY: ExitStrategy = {
+  exitTimeoutInMillis: 30 * 1000, // 30 seconds for turbo
+  targetProfit: 91, // aim to 100% with 9% slippage
+  profitCalcIterationDelayMillis: 50 // 0.05 seconds
+}
