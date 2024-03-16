@@ -65,11 +65,12 @@ export class TurboBot {
 
       const raydium = new PublicKey(RAYDIUM_PUBLIC_KEY);
 
-      const rInfo = await this.connection.getParsedAccountInfo(raydium)
-      console.log(`Raydium info: ${JSON.stringify(rInfo.value?.data)}`)
+      const ss = this.connection.onAccountChange(raydium, (acc) => {
+        console.log(`Acc changed`)
+      })
 
       let isCheckingPool = false
-      const subId = this.connection.onLogs(raydium, async (txLogs) => {
+      this.onLogsSubscriptionId = this.connection.onLogs(raydium, async (txLogs) => {
         console.log(`Log received. ${txLogs.signature}`)
         if (isCheckingPool || this.seenTxs.has(txLogs.signature)) { return }
         isCheckingPool = true
@@ -114,7 +115,6 @@ export class TurboBot {
         }
         isCheckingPool = false
       })
-      this.onLogsSubscriptionId = subId
 
       const ws = new WebSocket(config.rpcWsURL)
       ws.onopen = () => {
