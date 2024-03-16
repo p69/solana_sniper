@@ -115,12 +115,8 @@ export class TurboBot {
       const ws = new WebSocket(config.rpcWsURL)
       ws.onopen = () => {
         ws.send(
-          JSON.stringify({
-            "jsonrpc": "2.0",
-            "id": 1,
-            "method": "logsSubscribe",
-            "params": ["all"]
-          })
+          JSON.stringify({ "jsonrpc": "2.0", "id": 1, "method": "slotSubscribe" }
+          )
         )
 
         ws.onmessage = (evt) => {
