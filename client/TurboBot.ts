@@ -119,11 +119,10 @@ export class TurboBot {
           JSON.stringify({
             "jsonrpc": "2.0",
             "id": 1,
-            "method": "programSubscribe",
+            "method": "logsSubscribe",
             "params": [
-              RAYDIUM_PUBLIC_KEY,
               {
-                "encoding": "jsonParsed"
+                "mentions": [RAYDIUM_PUBLIC_KEY]
               }
             ]
           })
