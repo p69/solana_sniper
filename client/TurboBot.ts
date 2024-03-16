@@ -65,7 +65,7 @@ export class TurboBot {
 
       const raydium = new PublicKey(RAYDIUM_PUBLIC_KEY);
 
-      const ss = this.connection.onAccountChange(raydium, (acc) => {
+      const ss = this.connection.onProgramAccountChange(raydium, (acc) => {
         console.log(`Acc changed`)
       })
 
