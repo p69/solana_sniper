@@ -65,6 +65,9 @@ export class TurboBot {
 
       const raydium = new PublicKey(RAYDIUM_PUBLIC_KEY);
 
+      const rInfo = await this.connection.getParsedAccountInfo(raydium)
+      console.log(`Raydium info: ${JSON.stringify(rInfo.value?.data)}`)
+
       let isCheckingPool = false
       const subId = this.connection.onLogs(raydium, async (txLogs) => {
         console.log(`Log received. ${txLogs.signature}`)
@@ -122,7 +125,7 @@ export class TurboBot {
             "method": "logsSubscribe",
             "params": [
               {
-                "mentions": RAYDIUM_PUBLIC_KEY
+                "mentions": [RAYDIUM_PUBLIC_KEY]
               }
             ]
           })

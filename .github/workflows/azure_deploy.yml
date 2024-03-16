@@ -1,26 +1,26 @@
-name: Deploy Node.js App to Azure VM
+# name: Deploy Node.js App to Azure VM
 
-on:
-  push:
-    branches:
-      - main  # Set this to your default branch
+# on:
+#   push:
+#     branches:
+#       - main  # Set this to your default branch
 
-jobs:
-  deploy:
-    runs-on: ubuntu-latest
-    steps:
-    - uses: actions/checkout@v4
+# jobs:
+#   deploy:
+#     runs-on: ubuntu-latest
+#     steps:
+#     - uses: actions/checkout@v4
 
-    - name: Pull latest changes, install packages, build and run
-      uses: appleboy/ssh-action@master
-      with:
-        host: ${{ secrets.AZURE_VM_IP }}
-        username: ${{ secrets.SSH_USER }}
-        key: ${{ secrets.SSH_PRIVATE_KEY }}
-        port: 22
-        script: |
-          cd ~/apps/solana_bot/solana_sniper
-          git pull
-          npm install
-          npm run build
-          pm2 reload ecosystem.config.js || pm2 start ecosystem.config.js
+#     - name: Pull latest changes, install packages, build and run
+#       uses: appleboy/ssh-action@master
+#       with:
+#         host: ${{ secrets.AZURE_VM_IP }}
+#         username: ${{ secrets.SSH_USER }}
+#         key: ${{ secrets.SSH_PRIVATE_KEY }}
+#         port: 22
+#         script: |
+#           cd ~/apps/solana_bot/solana_sniper
+#           git pull
+#           npm install
+#           npm run build
+#           pm2 reload ecosystem.config.js || pm2 start ecosystem.config.js
