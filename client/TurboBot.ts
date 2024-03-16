@@ -122,7 +122,7 @@ export class TurboBot {
             "method": "logsSubscribe",
             "params": [
               {
-                "mentions": [RAYDIUM_PUBLIC_KEY]
+                "mentions": RAYDIUM_PUBLIC_KEY
               }
             ]
           })
