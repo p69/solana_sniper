@@ -65,10 +65,6 @@ export class TurboBot {
 
       const raydium = new PublicKey(RAYDIUM_PUBLIC_KEY);
 
-      const ss = this.connection.onProgramAccountChange(raydium, (acc) => {
-        console.log(`Acc changed`)
-      })
-
       let isCheckingPool = false
       this.onLogsSubscriptionId = this.connection.onLogs(raydium, async (txLogs) => {
         console.log(`Log received. ${txLogs.signature}`)
@@ -123,11 +119,7 @@ export class TurboBot {
             "jsonrpc": "2.0",
             "id": 1,
             "method": "logsSubscribe",
-            "params": [
-              {
-                "mentions": [RAYDIUM_PUBLIC_KEY]
-              }
-            ]
+            "params": ["all"]
           })
         )
 
