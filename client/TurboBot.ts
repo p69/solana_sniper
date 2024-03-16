@@ -118,14 +118,22 @@ export class TurboBot {
         ws.send(
           JSON.stringify({
             "jsonrpc": "2.0",
-            "id": "1",
-            "method": "slotSubscribe"
+            "id": 1,
+            "method": "logsSubscribe",
+            "params": [
+              {
+                "mentions": [raydium.toString()]
+              },
+              {
+                "commitment": "confirmed"
+              }
+            ]
           })
         )
 
         ws.onmessage = (evt) => {
           try {
-            console.log(`New slot from WS: ${evt.data.toString()}`)
+            console.log(`New logs from WS: ${evt.data.toString()}`)
           } catch (e) {
             console.log(e)
           }
