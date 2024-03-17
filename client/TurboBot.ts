@@ -112,30 +112,30 @@ export class TurboBot {
         isCheckingPool = false
       })
 
-      const ws = new WebSocket(config.rpcWsURL)
-      ws.onopen = () => {
-        ws.send(
-          JSON.stringify({
-            "jsonrpc": "2.0",
-            "id": 1,
-            "method": "logsSubscribe",
-            "params": ["all"]
-          }
-          )
-        )
+      // const ws = new WebSocket(config.rpcWsURL)
+      // ws.onopen = () => {
+      //   ws.send(
+      //     JSON.stringify({
+      //       "jsonrpc": "2.0",
+      //       "id": 1,
+      //       "method": "logsSubscribe",
+      //       "params": ["all"]
+      //     }
+      //     )
+      //   )
 
-        ws.onmessage = (evt) => {
-          try {
-            console.log(`New logs from WS: ${evt.data.toString()}`)
-          } catch (e) {
-            console.log(e)
-          }
-        }
-      }
-      ws.onerror = (e) => {
-        console.log(`WS error1: ${e.error.errors[0]}`)
-        console.log(`WS error2: ${e.error.errors[1]}`)
-      }
+      //   ws.onmessage = (evt) => {
+      //     try {
+      //       console.log(`New logs from WS: ${evt.data.toString()}`)
+      //     } catch (e) {
+      //       console.log(e)
+      //     }
+      //   }
+      // }
+      // ws.onerror = (e) => {
+      //   console.log(`WS error1: ${e.error.errors[0]}`)
+      //   console.log(`WS error2: ${e.error.errors[1]}`)
+      // }
     })
   }
 
