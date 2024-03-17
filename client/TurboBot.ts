@@ -101,6 +101,7 @@ export class TurboBot {
           return
         }
 
+        console.log(`Pool looks good, buying.`)
         const tradeResults = await tryPerformTrading(this.connection, check.data.pool, 'TURBO')
         console.log(chalk.yellow('Got trading results'))
         console.log(`BUY at ${tradeResults.buyTime ?? 'null'}`)
