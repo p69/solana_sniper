@@ -119,14 +119,7 @@ export class TurboBot {
             "jsonrpc": "2.0",
             "id": 1,
             "method": "logsSubscribe",
-            "params": [
-              {
-                "mentions": [RAYDIUM_PUBLIC_KEY]
-              },
-              {
-                "commitment": "confirmed"
-              }
-            ]
+            "params": ["all"]
           }
           )
         )
