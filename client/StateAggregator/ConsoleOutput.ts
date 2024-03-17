@@ -263,8 +263,9 @@ export async function onBuyResults(poolId: string, buyResults: BuyResult) {
 
 export async function onTradingPNLChanged(poolId: string, newPNL: number) {
   if (!dbIsInited) {
+    const date = new Date()
     const isNegative = newPNL < 0
-    const logTxt = `PNL: ${(newPNL * 100).toFixed(2)}%`
+    const logTxt = `[${formatDate(date)}]: PNL - ${(newPNL * 100).toFixed(2)}%`
     console.log(isNegative ? chalk.red(logTxt) : chalk.green(logTxt))
     return
   }

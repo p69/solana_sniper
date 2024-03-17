@@ -200,7 +200,7 @@ async function loopAndWaitForProfit(
         const { currentAmountOut, profit } = calculationResult;
         const profitChanges = Math.abs(profit - profitToTakeOrLose)
         if (profitChanges >= 0.01) {
-          onTradingPNLChanged(poolKeys.id.toString(), profit - profitToTakeOrLose)
+          onTradingPNLChanged(poolKeys.id.toString(), profit)
         }
         profitToTakeOrLose = profit;
         profitObject.profit = profit
@@ -241,7 +241,8 @@ export async function waitForProfitOrTimeout(
       timeout(timeutInMillis, cancellationToken)
     ])
   } catch (e) {
-    console.error(`Timeout happened ${chalk.bold('Profit to take: ')} ${profitObject.profit < 0 ? chalk.red(profitObject.profit) : chalk.green(profitObject.profit)}`);
+    const profitInPercent = (profitObject.profit * 100).toFixed(2) + '%'
+    console.error(`Timeout happened ${chalk.bold('Profit to take: ')} ${profitObject.profit < 0 ? chalk.red(profitInPercent) : chalk.green(profitInPercent)}`);
   }
   return { amountOut: profitObject.amountOut, profit: profitObject.profit }
 }

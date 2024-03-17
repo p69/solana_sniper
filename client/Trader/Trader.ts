@@ -10,6 +10,7 @@ import { SellResults, sellToken } from './SellToken'
 import { Connection } from '@solana/web3.js'
 import { onBuyResults } from '../StateAggregator/ConsoleOutput'
 import { config } from '../Config'
+import chalk from 'chalk'
 
 export type TraderResults = {
   boughtAmountInSOL: number | null,

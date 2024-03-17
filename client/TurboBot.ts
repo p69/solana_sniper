@@ -103,6 +103,12 @@ export class TurboBot {
 
         const tradeResults = await tryPerformTrading(this.connection, check.data.pool, 'TURBO')
         console.log(chalk.yellow('Got trading results'))
+        console.log(`BUY at ${tradeResults.buyTime ?? 'null'}`)
+        if (tradeResults.kind === 'SUCCESS') {
+          console.log(`SELL at ${tradeResults.sellTime}`)
+        } else {
+          console.log(`Couldn't sell`)
+        }
         this.updateWSOLBalance(tradeResults)
         if (singleTrade) {
           this.connection.removeOnLogsListener(this.onLogsSubscriptionId ?? 0)
