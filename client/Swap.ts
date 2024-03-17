@@ -33,9 +33,11 @@ export async function swapTokens(
     poolKeys.version,
   );
 
+  console.log(`Getting last block`)
   const latestBlockhash = await connection.getLatestBlockhash({
     commitment: 'finalized',
   });
+  console.log(`Building tx`)
   const messageV0 = new TransactionMessage({
     payerKey: signer.publicKey,
     recentBlockhash: latestBlockhash.blockhash,
@@ -53,6 +55,7 @@ export async function swapTokens(
   }).compileToV0Message();
   const transaction = new VersionedTransaction(messageV0);
   transaction.sign([signer.payer, ...innerTransaction.signers]);
+  console.log(`Sending tx`)
   const signature = await connection.sendRawTransaction(
     transaction.serialize(),
     {
@@ -60,6 +63,7 @@ export async function swapTokens(
       preflightCommitment: commitment,
     },
   );
+  console.log(`Tx sent https://solscan.io/tx/${signature}`)
   return signature;
 }
 

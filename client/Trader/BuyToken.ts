@@ -55,6 +55,7 @@ export async function buyToken(
     }
   } else {
     try {
+      console.log(`Buying`)
       txid = await retryAsyncFunction(swapTokens,
         [connection,
           poolInfo,
