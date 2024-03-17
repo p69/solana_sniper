@@ -67,7 +67,7 @@ export class TurboBot {
 
       let isCheckingPool = false
       this.onLogsSubscriptionId = this.connection.onLogs(raydium, async (txLogs) => {
-        console.log(`Log received. ${txLogs.signature}`)
+        //console.log(`Log received. ${txLogs.signature}`)
         if (isCheckingPool || this.seenTxs.has(txLogs.signature)) { return }
         isCheckingPool = true
         this.seenTxs.add(txLogs.signature)
