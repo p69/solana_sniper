@@ -24,6 +24,6 @@ export const RED_TEST_EXIT_STRATEGY: ExitStrategy = {
 
 export const TURBO_EXIT_STRATEGY: ExitStrategy = {
   exitTimeoutInMillis: 2 * 60 * 1000, // 2 minutes for turbo
-  targetProfit: 89, // aim to 100% with 11% slippage
+  targetProfit: 0.89, // aim to 100% with 11% slippage
   profitCalcIterationDelayMillis: 50 // 0.05 seconds
 }
