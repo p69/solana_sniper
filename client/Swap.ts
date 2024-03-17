@@ -190,7 +190,7 @@ async function loopAndWaitForProfit(
   let prevAmountOut: number = 0;
   let priceDownCounter = 5;
   //priceDownCounter > 0 && 
-  while (profitToTakeOrLose < targetProfitPercentage && profitToTakeOrLose > STOP_LOSS_PERCENT) {
+  while (profitToTakeOrLose < targetProfitPercentage || profitToTakeOrLose > STOP_LOSS_PERCENT) {
     if (cancellationToken.cancelled) {
       break;
     }
