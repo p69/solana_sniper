@@ -184,13 +184,14 @@ async function loopAndWaitForProfit(
   profitObject: { amountOut: number, profit: number },
   cancellationToken: { cancelled: boolean }
 ) {
+  console.log(`Target profit: ${targetProfitPercentage}`)
   const STOP_LOSS_PERCENT = -0.5
 
   let profitToTakeOrLose: number = 0;
   let prevAmountOut: number = 0;
   let priceDownCounter = 5;
   //priceDownCounter > 0 && 
-  while (profitToTakeOrLose < targetProfitPercentage || profitToTakeOrLose > STOP_LOSS_PERCENT) {
+  do {
     if (cancellationToken.cancelled) {
       break;
     }
@@ -218,7 +219,7 @@ async function loopAndWaitForProfit(
     } catch (e) {
       await delay(amountOutCalculationDelayMs);
     }
-  }
+  } while (profitToTakeOrLose < targetProfitPercentage && profitToTakeOrLose > STOP_LOSS_PERCENT)
 
   return { amountOut: prevAmountOut, profit: profitToTakeOrLose };
 }
