@@ -62,14 +62,16 @@ export async function swapTokens(
     throw 'Simulation error'
   }
   console.log(`Tx simulation success`)
-  const signature = await connection.sendRawTransaction(
-    transaction.serialize(),
-    {
-      skipPreflight: true,
-      maxRetries: 20,
-      preflightCommitment: commitment,
-    },
-  );
+  const slot = await connection.getSlot()
+  const signature = await connection.sendTransaction(transaction, { skipPreflight: true, maxRetries: 20, minContextSlot: slot + 2 })
+  // const signature = await connection.sendRawTransaction(
+  //   transaction.serialize(),
+  //   {
+  //     skipPreflight: true,
+  //     maxRetries: 20,
+  //     preflightCommitment: commitment,
+  //   },
+  // );
   console.log(`Tx sent https://solscan.io/tx/${signature}`)
   return signature;
 }
