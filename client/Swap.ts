@@ -54,16 +54,15 @@ export async function swapTokens(
     ],
   }).compileToV0Message();
   const transaction = new VersionedTransaction(messageV0);
-  transaction.sign([signer.payer, ...innerTransaction.signers]);
+  transaction.sign([signer.payer]);
   console.log(`Sending tx`)
-  const simRes = await connection.simulateTransaction(transaction, { sigVerify: true })
+  const simRes = await connection.simulateTransaction(transaction)
   if (simRes.value.err) {
     console.log(`Tx simulation failed: ${simRes.value.err}`)
     throw 'Simulation error'
   }
   console.log(`Tx simulation success`)
-  const slot = await connection.getSlot()
-  const signature = await connection.sendTransaction(transaction, { skipPreflight: true, maxRetries: 20, minContextSlot: slot })
+  const signature = await connection.sendTransaction(transaction, { skipPreflight: false, maxRetries: 20, preflightCommitment: commitment })
   // const signature = await connection.sendRawTransaction(
   //   transaction.serialize(),
   //   {
