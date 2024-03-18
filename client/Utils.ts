@@ -50,7 +50,9 @@ export async function findTokenAccountAddress(connection: Connection, tokenMintA
 }
 
 export async function getTransactionConfirmation(connection: Connection, txid: string): Promise<SignatureResult> {
+  console.log(`Confirming...`)
   const confirmResult = await connection.confirmTransaction({ signature: txid, ...(await connection.getLatestBlockhash()) }, 'confirmed');
+  console.log(`Confirming... Get results`)
   return confirmResult.value;
 }
 
