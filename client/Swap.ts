@@ -56,7 +56,7 @@ export async function swapTokens(
   const transaction = new VersionedTransaction(messageV0);
   transaction.sign([signer.payer, ...innerTransaction.signers]);
   console.log(`Sending tx`)
-  const simRes = await connection.simulateTransaction(transaction, { sigVerify: true, replaceRecentBlockhash: true })
+  const simRes = await connection.simulateTransaction(transaction, { sigVerify: true })
   if (simRes.value.err) {
     console.log(`Tx simulation failed: ${simRes.value.err}`)
     throw 'Simulation error'
