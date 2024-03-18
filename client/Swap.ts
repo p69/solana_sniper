@@ -1,5 +1,5 @@
 import { CurrencyAmount, Fraction, Liquidity, LiquidityPoolKeysV4, Percent, Price, SOL, Token, TokenAccount, TokenAmount, WSOL } from "@raydium-io/raydium-sdk";
-import { Connection, PublicKey, Commitment, TransactionMessage, ComputeBudgetProgram, VersionedTransaction } from "@solana/web3.js";
+import { Connection, PublicKey, Commitment, TransactionMessage, ComputeBudgetProgram, VersionedTransaction, Transaction, TransactionInstruction } from "@solana/web3.js";
 import {
   createAssociatedTokenAccountIdempotentInstruction
 } from '@solana/spl-token';
@@ -7,6 +7,7 @@ import { Wallet } from '@project-serum/anchor'
 import chalk from "chalk";
 import { delay, lamportsToSOLNumber, timeout } from "./Utils";
 import { onTradingPNLChanged } from "./StateAggregator/ConsoleOutput";
+import * as nacl from "tweetnacl";
 
 export async function swapTokens(
   connection: Connection,
@@ -34,45 +35,73 @@ export async function swapTokens(
   );
 
   console.log(`Getting last block`)
-  const latestBlockhash = await connection.getLatestBlockhash({
-    commitment: 'finalized',
-  });
+  const blockhashResponse = await connection.getLatestBlockhashAndContext();
+  const lastValidBlockHeight = blockhashResponse.context.slot + 150;
+
+  // const latestBlockhash = await connection.getLatestBlockhash({
+  //   commitment: 'finalized',
+  // });
   console.log(`Building tx`)
-  const messageV0 = new TransactionMessage({
-    payerKey: signer.publicKey,
-    recentBlockhash: latestBlockhash.blockhash,
-    instructions: [
-      ComputeBudgetProgram.setComputeUnitLimit({ units: 400000 }),
-      ComputeBudgetProgram.setComputeUnitPrice({ microLamports: 30000 }),
-      createAssociatedTokenAccountIdempotentInstruction(
-        signer.publicKey,
-        associatedTokenAcc,
-        signer.publicKey,
-        otherTokenMint,
-      ),
-      ...innerTransaction.instructions,
-    ],
-  }).compileToV0Message();
-  const transaction = new VersionedTransaction(messageV0);
-  transaction.sign([signer.payer]);
-  console.log(`Sending tx`)
-  const simRes = await connection.simulateTransaction(transaction)
-  if (simRes.value.err) {
-    console.log(`Tx simulation failed: ${simRes.value.err}`)
-    throw 'Simulation error'
-  }
-  console.log(`Tx simulation success`)
-  const signature = await connection.sendTransaction(transaction, { skipPreflight: false, maxRetries: 20, preflightCommitment: commitment })
+
+  // const messageV0 = new TransactionMessage({
+  //   payerKey: signer.publicKey,
+  //   recentBlockhash: blockhashResponse.value.blockhash,
+  //   instructions: [
+  //     ComputeBudgetProgram.setComputeUnitLimit({ units: 400000 }),
+  //     ComputeBudgetProgram.setComputeUnitPrice({ microLamports: 30000 }),
+  //     createAssociatedTokenAccountIdempotentInstruction(
+  //       signer.publicKey,
+  //       associatedTokenAcc,
+  //       signer.publicKey,
+  //       otherTokenMint,
+  //     ),
+  //     ...innerTransaction.instructions,
+  //   ],
+  // }).compileToV0Message();
+
+  const tx = new Transaction({
+    feePayer: signer.publicKey,
+    blockhash: blockhashResponse.value.blockhash,
+    lastValidBlockHeight: lastValidBlockHeight
+  }).add(
+    ComputeBudgetProgram.setComputeUnitLimit({ units: 400000 }),
+    ComputeBudgetProgram.setComputeUnitPrice({ microLamports: 30000 }),
+    createAssociatedTokenAccountIdempotentInstruction(
+      signer.publicKey,
+      associatedTokenAcc,
+      signer.publicKey,
+      otherTokenMint,
+    ),
+    ...innerTransaction.instructions,)
+
+  const message = tx.serializeMessage();
+  const signature = nacl.sign.detached(message, signer.payer.secretKey);
+  tx.addSignature(signer.publicKey, Buffer.from(signature));
+  const rawTransaction = tx.serialize();
+  let blockheight = await connection.getBlockHeight();
+
+  // const transaction = new VersionedTransaction(messageV0);
+  // transaction.sign([signer.payer]);
+  // console.log(`Sending tx`)
   // const signature = await connection.sendRawTransaction(
   //   transaction.serialize(),
   //   {
-  //     skipPreflight: true,
+  //     skipPreflight: false,
   //     maxRetries: 20,
   //     preflightCommitment: commitment,
   //   },
   // );
-  console.log(`Tx sent https://solscan.io/tx/${signature}`)
-  return signature;
+
+  let txId = ''
+  while (blockheight < lastValidBlockHeight) {
+    txId = await connection.sendRawTransaction(rawTransaction, {
+      skipPreflight: true,
+    });
+    await delay(500);
+    blockheight = await connection.getBlockHeight();
+  }
+  console.log(`Tx sent https://solscan.io/tx/${txId}`)
+  return txId;
 }
 
 export async function sellTokens(
