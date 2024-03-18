@@ -63,7 +63,7 @@ export async function swapTokens(
   }
   console.log(`Tx simulation success`)
   const slot = await connection.getSlot()
-  const signature = await connection.sendTransaction(transaction, { skipPreflight: true, maxRetries: 20, minContextSlot: slot + 2 })
+  const signature = await connection.sendTransaction(transaction, { skipPreflight: true, maxRetries: 20, minContextSlot: slot })
   // const signature = await connection.sendRawTransaction(
   //   transaction.serialize(),
   //   {
