@@ -78,7 +78,7 @@ export async function buyToken(
   let confirmationError = ''
   if (!config.simulateOnly) {
     try {
-      const transactionConfirmation = await retryAsyncFunction(getTransactionConfirmation, [connection, txid], 10, 1000)
+      const transactionConfirmation = await retryAsyncFunction(getTransactionConfirmation, [connection, txid], 3, 500)
       if (transactionConfirmation.err) {
         confirmationError = `${transactionConfirmation.err}`
       } else {
