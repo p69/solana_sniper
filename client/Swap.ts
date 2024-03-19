@@ -37,6 +37,8 @@ export async function swapTokens(
   console.log(`Getting last block`)
   const blockhashResponse = await connection.getLatestBlockhashAndContext();
   const lastValidBlockHeight = blockhashResponse.context.slot + 150;
+  // const recentFee = await connection.getRecentPrioritizationFees()
+  // recentFee[0].prioritizationFee
 
   // const latestBlockhash = await connection.getLatestBlockhash({
   //   commitment: 'finalized',
@@ -47,8 +49,8 @@ export async function swapTokens(
     payerKey: signer.publicKey,
     recentBlockhash: blockhashResponse.value.blockhash,
     instructions: [
-      ComputeBudgetProgram.setComputeUnitLimit({ units: 400000 }),
-      ComputeBudgetProgram.setComputeUnitPrice({ microLamports: 30000 }),
+      ComputeBudgetProgram.setComputeUnitLimit({ units: 4000000 }),
+      ComputeBudgetProgram.setComputeUnitPrice({ microLamports: 60000 }),
       createAssociatedTokenAccountIdempotentInstruction(
         signer.publicKey,
         associatedTokenAcc,
