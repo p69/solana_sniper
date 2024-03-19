@@ -43,65 +43,40 @@ export async function swapTokens(
   // });
   console.log(`Building tx`)
 
-  // const messageV0 = new TransactionMessage({
-  //   payerKey: signer.publicKey,
-  //   recentBlockhash: blockhashResponse.value.blockhash,
-  //   instructions: [
-  //     ComputeBudgetProgram.setComputeUnitLimit({ units: 400000 }),
-  //     ComputeBudgetProgram.setComputeUnitPrice({ microLamports: 30000 }),
-  //     createAssociatedTokenAccountIdempotentInstruction(
-  //       signer.publicKey,
-  //       associatedTokenAcc,
-  //       signer.publicKey,
-  //       otherTokenMint,
-  //     ),
-  //     ...innerTransaction.instructions,
-  //   ],
-  // }).compileToV0Message();
+  const messageV0 = new TransactionMessage({
+    payerKey: signer.publicKey,
+    recentBlockhash: blockhashResponse.value.blockhash,
+    instructions: [
+      ComputeBudgetProgram.setComputeUnitLimit({ units: 400000 }),
+      ComputeBudgetProgram.setComputeUnitPrice({ microLamports: 30000 }),
+      createAssociatedTokenAccountIdempotentInstruction(
+        signer.publicKey,
+        associatedTokenAcc,
+        signer.publicKey,
+        otherTokenMint,
+      ),
+      ...innerTransaction.instructions,
+    ],
+  }).compileToV0Message();
 
-  const tx = new Transaction({
-    feePayer: signer.publicKey,
-    blockhash: blockhashResponse.value.blockhash,
-    lastValidBlockHeight: lastValidBlockHeight
-  }).add(
-    ComputeBudgetProgram.setComputeUnitLimit({ units: 400000 }),
-    ComputeBudgetProgram.setComputeUnitPrice({ microLamports: 30000 }),
-    createAssociatedTokenAccountIdempotentInstruction(
-      signer.publicKey,
-      associatedTokenAcc,
-      signer.publicKey,
-      otherTokenMint,
-    ),
-    ...innerTransaction.instructions,)
 
-  const message = tx.serializeMessage();
-  const signature = nacl.sign.detached(message, signer.payer.secretKey);
-  tx.addSignature(signer.publicKey, Buffer.from(signature));
-  const rawTransaction = tx.serialize();
-  let blockheight = await connection.getBlockHeight();
-
-  // const transaction = new VersionedTransaction(messageV0);
-  // transaction.sign([signer.payer]);
-  // console.log(`Sending tx`)
-  // const signature = await connection.sendRawTransaction(
-  //   transaction.serialize(),
-  //   {
-  //     skipPreflight: false,
-  //     maxRetries: 20,
-  //     preflightCommitment: commitment,
-  //   },
-  // );
-
-  let txId = ''
-  while (blockheight < lastValidBlockHeight) {
-    txId = await connection.sendRawTransaction(rawTransaction, {
+  const transaction = new VersionedTransaction(messageV0);
+  transaction.sign([signer.payer]);
+  console.log(`Sending tx`)
+  const signature = await connection.sendRawTransaction(
+    transaction.serialize(),
+    {
       skipPreflight: true,
-    });
-    await delay(500);
-    blockheight = await connection.getBlockHeight();
-  }
-  console.log(`Tx sent https://solscan.io/tx/${txId}`)
-  return txId;
+      maxRetries: 20
+    },
+  );
+  console.log(`Tx sent https://solscan.io/tx/${signature}`)
+  console.log(`Check tx`)
+  const txInfo = await connection.getParsedTransaction(signature)
+
+  console.log(JSON.stringify(txInfo, null, 2))
+
+  return signature;
 }
 
 export async function sellTokens(
