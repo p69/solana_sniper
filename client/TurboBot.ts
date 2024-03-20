@@ -9,6 +9,8 @@ import { instaBuyAndSell, tryPerformTrading } from './Trader/Trader';
 import { checkToken } from './PoolValidator/RaydiumSafetyCheck';
 import { TradingWallet } from './StateAggregator/StateTypes';
 import WebSocket from 'ws';
+import { getPoolInfo } from './ManualTrader';
+import { convertStringKeysToDataKeys } from './Utils';
 
 
 const RAYDIUM_PUBLIC_KEY = '675kPX9MHTjS2zt1qfr1NYHuzeLXfQM9H24wFSUt1Mp8';
@@ -62,15 +64,11 @@ export class TurboBot {
     await this.fetchInitialWalletSOLBalance()
     console.log(`Wallet:\n${JSON.stringify(this.tradingWallet, null, 2)}`)
 
-    const raydium = new PublicKey(RAYDIUM_PUBLIC_KEY)
-    const parsedInfo = await this.getPoolCreationTx(poolCreationTx)
-    if (!parsedInfo) {
-      console.error(`Pool doesn't exist`)
-      return
-    }
+
+    const poolInfo = await getPoolInfo(this.connection, new PublicKey(poolCreationTx))
 
     console.log(`Pool parsed, buying and selling`)
-    const tradeResults = await instaBuyAndSell(this.connection, parsedInfo.binaryKeys, 0.01)
+    const tradeResults = await instaBuyAndSell(this.connection, convertStringKeysToDataKeys(poolInfo), 0.01)
     console.log(chalk.yellow('Got trading results'))
     console.log(`BUY at ${tradeResults.buyTime ?? 'null'}`)
     if (tradeResults.kind === 'SUCCESS') {

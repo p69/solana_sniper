@@ -28,7 +28,7 @@ async function main() {
   console.log(poolInfo)
 }
 
-async function getPoolInfo(connection: Connection, poolId: PublicKey): Promise<ApiPoolInfoV4> {
+export async function getPoolInfo(connection: Connection, poolId: PublicKey): Promise<ApiPoolInfoV4> {
   const info = await connection.getAccountInfo(poolId);
   if (!info) {
     throw error('No Pool Info')
