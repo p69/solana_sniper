@@ -10,23 +10,23 @@ const RAYDIUM_POOL_V4_PROGRAM_ID = '675kPX9MHTjS2zt1qfr1NYHuzeLXfQM9H24wFSUt1Mp8
 
 type operation = 'buy' | 'sell'
 
-const argv = yargs(hideBin(process.argv)).options({
-  operation: { type: 'string', default: 'sell' },
-  mint: { type: 'string', demandOption: true },
-  pair: { type: 'string', demandOption: true },
-  amount: { type: 'number', default: 0.1 },
-}).parseSync()
+// const argv = yargs(hideBin(process.argv)).options({
+//   operation: { type: 'string', default: 'sell' },
+//   mint: { type: 'string', demandOption: true },
+//   pair: { type: 'string', demandOption: true },
+//   amount: { type: 'number', default: 0.1 },
+// }).parseSync()
 
-async function main() {
-  config.simulateOnly = false
-  const connection = new Connection(config.rpcHttpURL, {
-    wsEndpoint: config.rpcWsURL
-  })
+// async function main() {
+//   config.simulateOnly = false
+//   const connection = new Connection(config.rpcHttpURL, {
+//     wsEndpoint: config.rpcWsURL
+//   })
 
-  const mintAddress = new PublicKey(argv.mint)
-  const poolInfo = await getPoolInfo(connection, new PublicKey(argv.pair))
-  console.log(poolInfo)
-}
+//   const mintAddress = new PublicKey(argv.mint)
+//   const poolInfo = await getPoolInfo(connection, new PublicKey(argv.pair))
+//   console.log(poolInfo)
+// }
 
 export async function getPoolInfo(connection: Connection, poolId: PublicKey): Promise<ApiPoolInfoV4> {
   const info = await connection.getAccountInfo(poolId);
@@ -116,4 +116,4 @@ async function buy(connection: Connection, mintAddress: PublicKey) {
 //   } as LiquidityPoolKeysV4;
 // }
 
-main().catch(console.error)
+// main().catch(console.error)
