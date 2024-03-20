@@ -40,7 +40,8 @@ export async function swapTokens(
   const recentFee = await connection.getRecentPrioritizationFees({ lockedWritableAccounts: [new PublicKey('675kPX9MHTjS2zt1qfr1NYHuzeLXfQM9H24wFSUt1Mp8')] })
   const avgFee = (recentFee.reduce((sum, x) => sum + x.prioritizationFee, 0)) / recentFee.length
   console.log(`Avg fee: ${avgFee}`)
-
+  const effectiveFee = Math.round(avgFee * 1.5)
+  console.log(`Effective Fee: ${effectiveFee}`)
   // const latestBlockhash = await connection.getLatestBlockhash({
   //   commitment: 'finalized',
   // });
@@ -51,7 +52,7 @@ export async function swapTokens(
     recentBlockhash: blockhashResponse.value.blockhash,
     instructions: [
       ComputeBudgetProgram.setComputeUnitLimit({ units: 300000 }),
-      ComputeBudgetProgram.setComputeUnitPrice({ microLamports: avgFee * 1.5 }),
+      ComputeBudgetProgram.setComputeUnitPrice({ microLamports: effectiveFee }),
       createAssociatedTokenAccountIdempotentInstruction(
         signer.publicKey,
         associatedTokenAcc,
