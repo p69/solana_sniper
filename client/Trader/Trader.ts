@@ -71,6 +71,45 @@ export async function tryPerformTrading(connection: Connection, pool: LiquidityP
   return sellResults
 }
 
+export async function instaBuyAndSell(connection: Connection, pool: LiquidityPoolKeysV4, solAmount: number): Promise<SellResults> {
+  let tokenAMint = pool.baseMint.toString() === WSOL.mint ? pool.baseMint : pool.quoteMint;
+  let tokenBMint = pool.baseMint.toString() !== WSOL.mint ? pool.baseMint : pool.quoteMint;
+  let tokenBDecimals = pool.baseMint.toString() === tokenBMint.toString() ? pool.baseDecimals : pool.quoteDecimals;
+  const tokenBToken = new Token(TOKEN_PROGRAM_ID, tokenBMint, tokenBDecimals)
+  const tokenBAccountAddress = getAssociatedTokenAddressSync(tokenBMint, OWNER_ADDRESS, false);
+
+
+  if (pool.quoteMint.toString() !== WSOL.mint && pool.baseMint.toString() !== WSOL.mint) {
+    return { kind: 'FAILED', reason: 'No SOL in pair', txId: null, boughtForSol: null, buyTime: null }
+  }
+
+  const buyAmount = solAmount
+  const buyResult = await buyToken(connection, PAYER, buyAmount, tokenBToken, tokenBAccountAddress, pool, SOL_SPL_TOKEN_ADDRESS)
+  const buyDate = new Date()
+
+  if (buyResult.kind !== 'SUCCESS') {
+    //TODO: Handle errors
+    return { kind: 'FAILED', reason: `Buy transaction failed`, txId: null, buyTime: formatDate(buyDate), boughtForSol: null }
+  }
+
+  const amountToSell = new TokenAmount(tokenBToken, buyResult.newTokenAmount, false)
+  const exitStrategy: ExitStrategy = {
+    exitTimeoutInMillis: 500,
+    targetProfit: 1,
+    profitCalcIterationDelayMillis: 100,
+  }
+  let sellResults = await sellToken(
+    connection,
+    buyAmount,
+    amountToSell,
+    pool,
+    SOL_SPL_TOKEN_ADDRESS,
+    tokenBAccountAddress,
+    exitStrategy)
+  sellResults.buyTime = formatDate(buyDate)
+  return sellResults
+}
+
 
 function getBuyAmountInSOL(tokenStatus: TokenSafetyStatus): number | null {
   if (config.buySOLAmount) {
