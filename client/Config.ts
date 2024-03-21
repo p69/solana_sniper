@@ -17,6 +17,8 @@ interface Config {
   validatorsLimit: number,
   appPort: number,
   buySOLAmount: number | null,
+  backupRpcUrl: string | null,
+  backupWsRpcUrl: string | null
 }
 
 export let config: Config = {
@@ -31,5 +33,7 @@ export let config: Config = {
   dumpTradingHistoryToFile: process.env.DUMP_HISTORY_TRADING_RECORDS_TO_FILE === 'true',
   validatorsLimit: Number(process.env.VALIDATORS_LIMIT!),
   appPort: process.env.APP_PORT ? Number(process.env.APP_PORT) : 3000,
-  buySOLAmount: process.env.BUY_SOL_AMOUNT ? Number(process.env.BUY_SOL_AMOUNT) : null
+  buySOLAmount: process.env.BUY_SOL_AMOUNT ? Number(process.env.BUY_SOL_AMOUNT) : null,
+  backupRpcUrl: process.env.BACKUP_RPC_URL ?? null,
+  backupWsRpcUrl: process.env.BACKUP_WS_URL ?? null
 }

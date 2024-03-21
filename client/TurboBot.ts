@@ -22,6 +22,7 @@ export class TurboBot {
   private seenTxs = new Set<string>()
   private onLogsSubscriptionId: number | null = null
   private connection: Connection
+  private backupConnection: Connection | null
   private tradingWallet: TradingWallet = {
     id: 0,
     startValue: 1,
@@ -29,8 +30,9 @@ export class TurboBot {
     totalProfit: 0
   }
 
-  constructor(connection: Connection) {
+  constructor(connection: Connection, backupConnection: Connection | null = null) {
     this.connection = connection
+    this.backupConnection = backupConnection
   }
 
   isStarted() {
@@ -68,7 +70,7 @@ export class TurboBot {
     const poolInfo = await getPoolInfo(this.connection, new PublicKey(poolCreationTx))
 
     console.log(`Pool parsed, buying and selling`)
-    const tradeResults = await instaBuyAndSell(this.connection, convertStringKeysToDataKeys(poolInfo), 0.01)
+    const tradeResults = await instaBuyAndSell(this.backupConnection ?? this.connection, convertStringKeysToDataKeys(poolInfo), 0.01)
     console.log(chalk.yellow('Got trading results'))
     console.log(`BUY at ${tradeResults.buyTime ?? 'null'}`)
     if (tradeResults.kind === 'SUCCESS') {
