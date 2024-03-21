@@ -74,12 +74,8 @@ export async function swapTokens(
       maxRetries: 20
     },
   );
+
   console.log(`Tx sent https://solscan.io/tx/${signature}`)
-  console.log(`Check tx`)
-  const txInfo = await connection.getTransaction(signature, { maxSupportedTransactionVersion: 0 })
-
-  console.log(JSON.stringify(txInfo, null, 2))
-
   return signature;
 }
 

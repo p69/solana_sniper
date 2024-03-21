@@ -60,7 +60,7 @@ export async function confirmTransaction(connection: Connection, txid: string): 
   try {
     const confirmResult = await Promise.race([
       getTransactionConfirmation(connection, txid),
-      timeout(30 * 1000)
+      timeout(10 * 1000)
     ])
     const transactionFailed = confirmResult.err !== null;
     if (transactionFailed) {

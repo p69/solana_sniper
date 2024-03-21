@@ -4,7 +4,7 @@ import { LiquidityPoolKeysV4, Token, TokenAmount, WSOL } from "@raydium-io/raydi
 import { Wallet } from '@project-serum/anchor'
 import chalk from 'chalk'
 import { calculateAmountOut, swapTokens } from '../Swap'
-import { getNewTokenBalance, getTransactionConfirmation, lamportsToSOLNumber, retryAsyncFunction } from '../Utils'
+import { confirmTransaction, getNewTokenBalance, getTransactionConfirmation, lamportsToSOLNumber, retryAsyncFunction } from '../Utils'
 import { config } from '../Config'
 
 const WSOL_TOKEN = new Token(TOKEN_PROGRAM_ID, WSOL.mint, WSOL.decimals)
@@ -56,13 +56,20 @@ export async function buyToken(
   } else {
     try {
       console.log(`Buying`)
-      txid = await retryAsyncFunction(swapTokens,
-        [connection,
-          poolInfo,
-          mainTokenAccountAddress,
-          tokenToBuyAccountAddress,
-          payer,
-          buyAmount])
+      let txLanded = false
+      let attempt = 1
+      while (!txLanded || attempt <= 6) {
+        const signature = await swapTokens(connection, poolInfo, mainTokenAccountAddress, tokenToBuyAccountAddress, payer, buyAmount)
+        txLanded = await confirmTransaction(connection, signature)
+        attempt += 1
+      }
+      // txid = await retryAsyncFunction(swapTokens,
+      //   [connection,
+      //     poolInfo,
+      //     mainTokenAccountAddress,
+      //     tokenToBuyAccountAddress,
+      //     payer,
+      //     buyAmount])
     } catch (e) {
       console.error(`Failed to buy shitcoin with error ${e}. Retrying.`)
       buyError = `${e}`
