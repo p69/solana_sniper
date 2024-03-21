@@ -70,7 +70,7 @@ export class TurboBot {
     const poolInfo = await getPoolInfo(this.connection, new PublicKey(poolCreationTx))
 
     console.log(`Pool parsed, buying and selling`)
-    const tradeResults = await instaBuyAndSell(this.backupConnection ?? this.connection, convertStringKeysToDataKeys(poolInfo), 0.01)
+    const tradeResults = await instaBuyAndSell(this.backupConnection!, convertStringKeysToDataKeys(poolInfo), 0.01)
     console.log(chalk.yellow('Got trading results'))
     console.log(`BUY at ${tradeResults.buyTime ?? 'null'}`)
     if (tradeResults.kind === 'SUCCESS') {
