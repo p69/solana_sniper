@@ -18,8 +18,8 @@ const bot = new TurboBot(connection, backupConnection)
 async function main() {
   console.log('Run Turbo Bot')
 
-  //await bot.start(false)
-  await bot.buySellQuickTest('BZivKpJWgQvrA3yYe3ubomufeGVouoYoUhosmBEdqF9y')
+  await bot.start(false)
+  // await bot.buySellQuickTest('BZivKpJWgQvrA3yYe3ubomufeGVouoYoUhosmBEdqF9y')
   console.log('Trading complete')
 }
 

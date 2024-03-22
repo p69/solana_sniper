@@ -44,7 +44,8 @@ export async function buyToken(
   const buyAmount = new TokenAmount(WSOL_TOKEN, amountToBuy, false)
 
   let buyError = ''
-  let txid = ''
+  let signature = ''
+  let txLanded = false
   let newTokenAmount: number | null = null
   if (config.simulateOnly) {
     try {
@@ -56,54 +57,47 @@ export async function buyToken(
   } else {
     try {
       console.log(`Buying`)
-      let txLanded = false
       let attempt = 1
-      while (!txLanded || attempt <= 6) {
-        const signature = await swapTokens(connection, poolInfo, mainTokenAccountAddress, tokenToBuyAccountAddress, payer, buyAmount)
+      while (!txLanded && attempt <= 6) {
+        console.log(`Buy attempt ${attempt}`)
+        signature = await swapTokens(connection, poolInfo, mainTokenAccountAddress, tokenToBuyAccountAddress, payer, buyAmount)
         txLanded = await confirmTransaction(connection, signature)
         attempt += 1
       }
-      // txid = await retryAsyncFunction(swapTokens,
-      //   [connection,
-      //     poolInfo,
-      //     mainTokenAccountAddress,
-      //     tokenToBuyAccountAddress,
-      //     payer,
-      //     buyAmount])
     } catch (e) {
       console.error(`Failed to buy shitcoin with error ${e}. Retrying.`)
       buyError = `${e}`
     }
 
-    if (txid === '') {
+    if (!txLanded) {
       return { kind: 'NO_BUY', reason: buyError }
     }
   }
 
 
-  let transactionConfirmed = newTokenAmount !== null
-  let confirmationError = ''
-  if (!config.simulateOnly) {
-    try {
-      const transactionConfirmation = await retryAsyncFunction(getTransactionConfirmation, [connection, txid], 3, 500)
-      if (transactionConfirmation.err) {
-        confirmationError = `${transactionConfirmation.err}`
-      } else {
-        transactionConfirmed = true
-      }
-    } catch (e) {
-      confirmationError = `${e}`
-    }
+  // let transactionConfirmed = newTokenAmount !== null
+  // let confirmationError = ''
+  // if (!config.simulateOnly) {
+  //   try {
+  //     const transactionConfirmation = await retryAsyncFunction(getTransactionConfirmation, [connection, txid], 3, 500)
+  //     if (transactionConfirmation.err) {
+  //       confirmationError = `${transactionConfirmation.err}`
+  //     } else {
+  //       transactionConfirmed = true
+  //     }
+  //   } catch (e) {
+  //     confirmationError = `${e}`
+  //   }
 
-    if (!transactionConfirmed) {
-      return { kind: 'NO_CONFIRMATION', reason: confirmationError, txId: txid }
-    }
-  }
+  //   if (!transactionConfirmed) {
+  //     return { kind: 'NO_CONFIRMATION', reason: confirmationError, txId: txid }
+  //   }
+  // }
 
   let snipedAmount: number | null
   if (!config.simulateOnly) {
     const shitTokenBalance = await retryAsyncFunction(getNewTokenBalance,
-      [connection, txid, tokenToBuy.mint.toString(), payer.publicKey.toString()], 10, 1000);
+      [connection, signature, tokenToBuy.mint.toString(), payer.publicKey.toString()], 10, 1000);
 
     if (shitTokenBalance !== undefined) {
       snipedAmount = shitTokenBalance.uiTokenAmount.uiAmount;

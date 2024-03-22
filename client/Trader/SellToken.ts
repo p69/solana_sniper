@@ -3,7 +3,7 @@ import { ExitStrategy } from "./ExitStrategy";
 import { LiquidityPoolKeysV4, TokenAmount, WSOL } from "@raydium-io/raydium-sdk";
 import { PAYER, WSOL_TOKEN } from "./Addresses";
 import { swapTokens, waitForProfitOrTimeout } from "../Swap";
-import { delay, formatDate, getTransactionConfirmation, retryAsyncFunction } from "../Utils";
+import { confirmTransaction, delay, formatDate, getTransactionConfirmation, retryAsyncFunction } from "../Utils";
 import { config } from "../Config";
 
 type SellSuccess = {
@@ -78,29 +78,36 @@ async function sellAndConfirm(
   shitcoinAccountAddress: PublicKey,
   amountToSell: TokenAmount): Promise<{ confirmedTxId: string | null, error: string | null }> {
 
-  let txid = ''
+  let signature = ''
+  let txLanded = false
   let sellError = ''
   try {
-    txid = await retryAsyncFunction(swapTokens,
-      [connection,
+
+    let attempt = 1
+    while (!txLanded && attempt <= 6) {
+      console.log(`Buy attempt ${attempt}`)
+      signature = await swapTokens(connection,
         pool,
         shitcoinAccountAddress,
         mainTokenAccountAddress,
         PAYER,
-        amountToSell])
+        amountToSell)
+      txLanded = await confirmTransaction(connection, signature)
+      attempt += 1
+    }
   } catch (e) {
     console.error(`Failed to buy shitcoin with error ${e}. Retrying.`);
     sellError = `${e}`
   }
 
-  if (txid === '') {
+  if (!txLanded) {
     return { confirmedTxId: null, error: sellError }
   }
 
   let transactionConfirmed = false
   let confirmationError = ''
   try {
-    const transactionConfirmation = await retryAsyncFunction(getTransactionConfirmation, [connection, txid], 5, 300)
+    const transactionConfirmation = await retryAsyncFunction(getTransactionConfirmation, [connection, signature], 5, 300)
     if (transactionConfirmation.err) {
       confirmationError = `${transactionConfirmation.err}`
     } else {
@@ -110,7 +117,7 @@ async function sellAndConfirm(
     confirmationError = `${e}`
   }
 
-  return { confirmedTxId: transactionConfirmed ? txid : null, error: confirmationError === '' ? null : confirmationError }
+  return { confirmedTxId: transactionConfirmed ? signature : null, error: confirmationError === '' ? null : confirmationError }
 }
 
 interface SPLTransferInfo {
