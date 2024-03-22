@@ -52,6 +52,13 @@ export class TurboBot {
     }
   }
 
+  private async updateRealWsolBalance() {
+    const newWalletBalance = (await this.connection.getTokenAccountBalance(SOL_SPL_TOKEN_ADDRESS)).value.uiAmount ?? 0
+    const totalProfit = (newWalletBalance - this.tradingWallet.startValue) / this.tradingWallet.startValue
+    this.tradingWallet = { ...this.tradingWallet, current: newWalletBalance, totalProfit }
+    console.log(`Wallet:\n${JSON.stringify(this.tradingWallet, null, 2)}`)
+  }
+
   private async fetchInitialWalletSOLBalance() {
     if (config.simulateOnly) { return }
     console.log(`Fetching wallet balance`)
@@ -134,7 +141,12 @@ export class TurboBot {
         } else {
           console.log(`Couldn't sell`)
         }
-        this.updateWSOLBalance(tradeResults)
+        if (config.simulateOnly) {
+          this.updateWSOLBalance(tradeResults)
+        } else {
+          await this.updateRealWsolBalance()
+        }
+
         if (singleTrade) {
           this.connection.removeOnLogsListener(this.onLogsSubscriptionId ?? 0)
           this.onLogsSubscriptionId = null

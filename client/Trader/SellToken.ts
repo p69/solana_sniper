@@ -81,11 +81,10 @@ async function sellAndConfirm(
   let signature = ''
   let txLanded = false
   let sellError = ''
-  try {
-
-    let attempt = 1
-    while (!txLanded && attempt <= 6) {
-      console.log(`Buy attempt ${attempt}`)
+  let attempt = 1
+  while (!txLanded && attempt <= 20) {
+    console.log(`Sell attempt ${attempt}`)
+    try {
       signature = await swapTokens(connection,
         pool,
         shitcoinAccountAddress,
@@ -93,31 +92,27 @@ async function sellAndConfirm(
         PAYER,
         amountToSell)
       txLanded = await confirmTransaction(connection, signature)
-      attempt += 1
+    } catch (e) {
+      console.error(`Failed to sell shitcoin with error ${e}. Retrying.`);
+      sellError = JSON.stringify(e)
     }
-  } catch (e) {
-    console.error(`Failed to buy shitcoin with error ${e}. Retrying.`);
-    sellError = `${e}`
+    attempt += 1
   }
 
-  if (!txLanded) {
-    return { confirmedTxId: null, error: sellError }
-  }
+  // let transactionConfirmed = false
+  // let confirmationError = ''
+  // try {
+  //   const transactionConfirmation = await retryAsyncFunction(getTransactionConfirmation, [connection, signature], 5, 300)
+  //   if (transactionConfirmation.err) {
+  //     confirmationError = `${transactionConfirmation.err}`
+  //   } else {
+  //     transactionConfirmed = true
+  //   }
+  // } catch (e) {
+  //   confirmationError = `${e}`
+  // }
 
-  let transactionConfirmed = false
-  let confirmationError = ''
-  try {
-    const transactionConfirmation = await retryAsyncFunction(getTransactionConfirmation, [connection, signature], 5, 300)
-    if (transactionConfirmation.err) {
-      confirmationError = `${transactionConfirmation.err}`
-    } else {
-      transactionConfirmed = true
-    }
-  } catch (e) {
-    confirmationError = `${e}`
-  }
-
-  return { confirmedTxId: transactionConfirmed ? signature : null, error: confirmationError === '' ? null : confirmationError }
+  return { confirmedTxId: txLanded ? signature : null, error: txLanded ? null : sellError }
 }
 
 interface SPLTransferInfo {

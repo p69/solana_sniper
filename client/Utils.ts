@@ -60,11 +60,11 @@ export async function confirmTransaction(connection: Connection, txid: string): 
   try {
     const confirmResult = await Promise.race([
       getTransactionConfirmation(connection, txid),
-      timeout(10 * 1000)
+      timeout(20 * 1000)
     ])
     const transactionFailed = confirmResult.err !== null;
     if (transactionFailed) {
-      console.log(`Buying transaction ${chalk.bold(txid)} ${chalk.red('FAILED')}. Error: ${chalk.redBright(confirmResult.err)}`);
+      console.log(`Buying transaction ${chalk.bold(txid)} ${chalk.red('FAILED')}. Error: ${chalk.redBright(JSON.stringify(confirmResult.err))}`);
       return false;
     }
     return true;
